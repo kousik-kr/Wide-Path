@@ -103,11 +103,20 @@ public class SyntheticDatasetGenerator {
             if (p != null) congestedPoints.add(p);
         }
 
-        // Run DBSCAN clustering
-        double EPSILON = 0.0001; // coordinate distance threshold, adjust as needed
+     // Run DBSCAN clustering with adaptive epsilon so that congested regions can form
+        double initialEpsilon = estimateEpsilon(congestedPoints, 5, 0.0001);
         int MIN_POINTS = 3;
+        int minPointsForRun = Math.min(MIN_POINTS, Math.max(1, congestedPoints.size()));
 
-        Map<Integer, Integer> clusterMap = runDBSCAN(congestedPoints, EPSILON, MIN_POINTS);
+        Map<Integer, Integer> clusterMap = runDBSCAN(congestedPoints, initialEpsilon, minPointsForRun);
+        if (!hasClusters(clusterMap)) {
+            // Gradually relax epsilon to encourage cluster formation when data is sparse
+            double eps = initialEpsilon;
+            for (int i = 0; i < 3 && !hasClusters(clusterMap); i++) {
+                eps *= 2;
+                clusterMap = runDBSCAN(congestedPoints, eps, minPointsForRun);
+            }
+        }
 
         Map<Integer, City> cities = new HashMap<>();
         AtomicInteger cityCounter = new AtomicInteger(1);
@@ -132,7 +141,7 @@ public class SyntheticDatasetGenerator {
                 if (city != null) city.edges.add(ek);
             }
         }
-
+    
         // Select edges for rush hour width increase
         Set<EdgeKey> rushEdges = new HashSet<>();
         Random rng = new Random(42);
@@ -181,6 +190,34 @@ public class SyntheticDatasetGenerator {
     }
 
     // DBSCAN methods same as previous code...
+
+    static boolean hasClusters(Map<Integer, Integer> clusterMap) {
+        for (int clusterId : clusterMap.values()) {
+            if (clusterId != -1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static double estimateEpsilon(List<Point> points, int k, double fallback) {
+        if (points.size() <= 1) return fallback;
+        int neighborCount = Math.min(k, points.size() - 1);
+        List<Double> kthNeighborDistances = new ArrayList<>();
+        for (Point p : points) {
+            List<Double> distances = new ArrayList<>();
+            for (Point other : points) {
+                if (p == other) continue;
+                distances.add(distance(p, other));
+            }
+            Collections.sort(distances);
+            kthNeighborDistances.add(distances.get(neighborCount - 1));
+        }
+        Collections.sort(kthNeighborDistances);
+        // Use median kth-neighbor distance to scale epsilon, falling back when data is degenerate
+        double median = kthNeighborDistances.get(kthNeighborDistances.size() / 2);
+        return median > 0 ? median * 1.5 : fallback;
+    }
 
     static Map<Integer, Integer> runDBSCAN(List<Point> points, double eps, int minPts) {
         Map<Integer, Integer> clusterMap = new HashMap<>();

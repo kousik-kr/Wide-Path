@@ -191,7 +191,20 @@ public class SyntheticDatasetGenerator {
     }
 
     // DBSCAN methods same as previous code...
-
+    static String deriveDatasetTag(String coordFileName) {
+        if (coordFileName == null || coordFileName.isEmpty()) {
+            return "dataset";
+        }
+        String[] parts = coordFileName.split("\\.");
+        if (parts.length >= 3 && !parts[1].isEmpty()) {
+            return parts[1];
+        }
+        if (parts.length >= 2 && !parts[parts.length - 2].isEmpty()) {
+            return parts[parts.length - 2];
+        }
+        return coordFileName.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
+    }
+    
     static boolean hasClusters(Map<Integer, Integer> clusterMap) {
         for (int clusterId : clusterMap.values()) {
             if (clusterId != -1) {

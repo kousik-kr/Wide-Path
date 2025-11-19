@@ -29,6 +29,8 @@ export default function MapCanvas() {
 
     const sourceId = 'route';
     const { geometry } = current.response;
+    // Keep a single source/layer pair alive and simply swap the GeoJSON data so
+    // MapLibre preserves any built-in controls and camera state between runs.
     if (!map.getSource(sourceId)) {
       map.addSource(sourceId, { type: 'geojson', data: geometry });
       map.addLayer({

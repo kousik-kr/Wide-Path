@@ -42,8 +42,9 @@ public class SyntheticDatasetGenerator {
         Path distPath = args.length > 1 ? Paths.get(args[1]) : Paths.get("USA-road-d.NY.gr");
         Path timePath = args.length > 2 ? Paths.get(args[2]) : Paths.get("USA-road-t.NY.gr");
 
-        Path nodeCityOutput = Paths.get("node-city.txt");
-        Path edgeCityOutput = Paths.get("edge-city.txt");
+        String datasetTag = deriveDatasetTag(coordPath.getFileName().toString());
+        Path nodeCityOutput = Paths.get("node_" + datasetTag + ".txt");
+        Path edgeCityOutput = Paths.get("edge_" + datasetTag + ".txt");
 
         double baseWidth = 1.0;
         double rushWidthFactor = 1.5;

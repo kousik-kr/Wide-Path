@@ -19,6 +19,9 @@ export interface RouteGeometry {
     clearway: boolean[];
     timeSeries: number[];
     widthMeters?: number[];
+    width: number[];
+    clearway: boolean[];
+    timeSeries: number[];
   };
 }
 

@@ -25,6 +25,7 @@ export default function QueryForm() {
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+      {/* API expects numeric node IDs so we keep search + manual entry together */}
       <NodeSelect
         label="Source node"
         value={watch('source')}

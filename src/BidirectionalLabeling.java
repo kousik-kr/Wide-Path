@@ -20,12 +20,13 @@ public class BidirectionalLabeling implements Runnable{
         private static final ConcurrentHashMap<Integer, Double> forwardBestScore = new ConcurrentHashMap<>();
         private static final ConcurrentHashMap<Integer, Double> backwardBestScore = new ConcurrentHashMap<>();
 
-        // Heuristic weights chosen empirically to down-rank paths that are long, skinny, or
-        // turn-heavy before spending time on full breakpoint construction.
-        private static final double DISTANCE_WEIGHT = 0.45;
-        private static final double WIDTH_WEIGHT = 0.25;
-        private static final double TURN_WEIGHT = 0.25;
-        private static final double SHARP_TURN_PENALTY = 0.15;
+        // Baseline weights for the adaptive heuristic. We scale these at runtime based on
+        // remaining budget pressure, observed narrowness, and accumulated turns so the
+        // heuristic stays dynamic instead of static.
+        private static final double BASE_DISTANCE_WEIGHT = 0.35;
+        private static final double BASE_WIDTH_WEIGHT = 0.30;
+        private static final double BASE_TURN_WEIGHT = 0.20;
+        private static final double BASE_SHARP_TURN_WEIGHT = 0.15;
 
         public BidirectionalLabeling(int goal, double b, Label label, BidirectionalDriver.SharedState shared, boolean is_forward){
                 this.goal = goal;
@@ -509,12 +510,19 @@ public class BidirectionalLabeling implements Runnable{
                 if(estimatedRemainingDistance==Double.MAX_VALUE) {
                         estimatedRemainingDistance = budget;
                 }
+                // Travel-time pressure: as we consume budget, distance weight increases so we
+                // prioritize options that satisfy the time constraint sooner.
+                double usedBudgetRatio = (pathDistance + estimatedRemainingDistance) / Math.max(1.0, budget);
+                double adaptiveDistanceWeight = BASE_DISTANCE_WEIGHT * (1.0 + 0.6 * Math.min(1.5, usedBudgetRatio));
 
-                double normalizedDistance = (pathDistance + estimatedRemainingDistance) / Math.max(1.0, budget);
+                double normalizedDistance = usedBudgetRatio;
 
-                // Prefer routes that stay wider for longer segments; use a simple average of rush/base widths.
-                double widthEstimate = (edge.getBaseWidth() + edge.getRushWidth()) / 2.0;
-                double widthScore = widthEstimate / Math.max(1.0, edge.get_distance());
+                // Narrow-road penalty: distance per unit width (higher when road is narrow). We
+                // amplify weight dynamically when this ratio is already high to minimize the
+                // percentage of narrow travel.
+                double widthEstimate = Math.max(1.0, (edge.getBaseWidth() + edge.getRushWidth()) / 2.0);
+                double narrowPenalty = edge.get_distance() / widthEstimate;
+                double adaptiveWidthWeight = BASE_WIDTH_WEIGHT * (1.0 + 0.4 * Math.min(1.5, narrowPenalty));
 
                 Integer predecessorId = topLabel.getVisitedList().get(topLabel.get_nodeID());
                 boolean sharpTurn = false;
@@ -530,12 +538,17 @@ public class BidirectionalLabeling implements Runnable{
                 }
                 projectedTurns += isForward ? nextNode.get_backward_hRightTurn() : nextNode.get_forward_hRightTurn();
 
-                double turnPenalty = projectedTurns;
+                // Turn penalties: grow as we already accumulate turns or narrow segments to
+                // discourage additional turning on constrained/narrow routes.
+                double turnPressure = projectedTurns / Math.max(1.0, pathDistance);
+                double adaptiveTurnWeight = BASE_TURN_WEIGHT * (1.0 + 0.5 * Math.min(1.5, turnPressure + narrowPenalty * 0.1));
 
-                return DISTANCE_WEIGHT * normalizedDistance
-                                - WIDTH_WEIGHT * widthScore
-                                + TURN_WEIGHT * turnPenalty
-                                + (sharpTurn ? SHARP_TURN_PENALTY : 0.0);
+                double adaptiveSharpTurnWeight = BASE_SHARP_TURN_WEIGHT * (1.0 + 0.5 * Math.min(1.5, usedBudgetRatio + narrowPenalty));
+
+                return adaptiveDistanceWeight * normalizedDistance
+                                + adaptiveWidthWeight * narrowPenalty
+                                + adaptiveTurnWeight * projectedTurns
+                                + (sharpTurn ? adaptiveSharpTurnWeight : 0.0);
         }
 
         public void setMaster() {

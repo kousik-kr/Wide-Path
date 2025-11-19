@@ -3,21 +3,35 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinTask;
 
 
 public class BidirectionalLabeling implements Runnable{
-	private int goal;
-	private Label topLabel;
-	private double budget;
-	BidirectionalDriver.SharedState shared;
-	private boolean isForward;
-	private boolean master = false;
-	
-	public BidirectionalLabeling(int goal, double b, Label label, BidirectionalDriver.SharedState shared, boolean is_forward){
-		this.goal = goal;
-		this.topLabel = label;
-		this.budget = b;
+        private int goal;
+        private Label topLabel;
+        private double budget;
+        BidirectionalDriver.SharedState shared;
+        private boolean isForward;
+        private boolean master = false;
+
+        // Direction-aware caches to avoid exploring labels that are obviously weaker than
+        // the best heuristic seen for a node. Lower scores are better.
+        private static final ConcurrentHashMap<Integer, Double> forwardBestScore = new ConcurrentHashMap<>();
+        private static final ConcurrentHashMap<Integer, Double> backwardBestScore = new ConcurrentHashMap<>();
+
+        // Baseline weights for the adaptive heuristic. We scale these at runtime based on
+        // remaining budget pressure, observed narrowness, and accumulated turns so the
+        // heuristic stays dynamic instead of static.
+        private static final double BASE_DISTANCE_WEIGHT = 0.35;
+        private static final double BASE_WIDTH_WEIGHT = 0.30;
+        private static final double BASE_TURN_WEIGHT = 0.20;
+        private static final double BASE_SHARP_TURN_WEIGHT = 0.15;
+
+        public BidirectionalLabeling(int goal, double b, Label label, BidirectionalDriver.SharedState shared, boolean is_forward){
+                this.goal = goal;
+                this.topLabel = label;
+                this.budget = b;
 		this.shared = shared;
 		this.isForward = is_forward;
 	}
@@ -55,9 +69,13 @@ public class BidirectionalLabeling implements Runnable{
 	//			if(j==destination) {
 	//				System.out.println("hi");
 	//			}
-				if(Graph.get_node(j).isFeasible() && Graph.get_node(j).get_forward_hTime()<=budget && !topLabel.getVisited(j)) {
-					Function current_arrivaltime_function = topLabel.get_arrivalTime();//current function at node i
-					Function current_width_function = topLabel.get_wide_distance();
+                                if(Graph.get_node(j).isFeasible() && Graph.get_node(j).get_forward_hTime()<=budget && !topLabel.getVisited(j)) {
+                                        Node nextNode = Graph.get_node(j);
+                                        if(shouldPrune(nextNode, edge, j)) {
+                                                continue;
+                                        }
+                                        Function current_arrivaltime_function = topLabel.get_arrivalTime();//current function at node i
+                                        Function current_width_function = topLabel.get_wide_distance();
 					
 					List<BreakPoint> arrival_time_breakpoints = new ArrayList<BreakPoint>();//to store the breakpoints at node j
 					List<BreakPoint> width_breakpoints = new ArrayList<BreakPoint>();
@@ -255,9 +273,13 @@ public class BidirectionalLabeling implements Runnable{
 	//			if(j==destination) {
 	//				System.out.println("hi");
 	//			}
-				if(Graph.get_node(j).isFeasible() && Graph.get_node(j).get_backward_hTime()<=budget && !topLabel.getVisited(j)) {
-					Function current_arrivaltime_function = topLabel.get_arrivalTime();//current function at node i
-					Function current_width_function = topLabel.get_wide_distance();
+                                if(Graph.get_node(j).isFeasible() && Graph.get_node(j).get_backward_hTime()<=budget && !topLabel.getVisited(j)) {
+                                        Node nextNode = Graph.get_node(j);
+                                        if(shouldPrune(nextNode, edge, j)) {
+                                                continue;
+                                        }
+                                        Function current_arrivaltime_function = topLabel.get_arrivalTime();//current function at node i
+                                        Function current_width_function = topLabel.get_wide_distance();
 					
 					List<BreakPoint> arrival_time_breakpoints = new ArrayList<BreakPoint>();//to store the breakpoints at node j
 					List<BreakPoint> width_breakpoints = new ArrayList<BreakPoint>();
@@ -450,11 +472,11 @@ public class BidirectionalLabeling implements Runnable{
 			}
 		}
 		
-		if(master) {
-			if(!BidirectionalAstar.isMemoryUpdated()) 
-				BidirectionalAstar.updateMemory();
-		}
-		if(labelQueue.size()>0) {
+                if(master) {
+                        if(!BidirectionalAstar.isMemoryUpdated())
+                                BidirectionalAstar.updateMemory();
+                }
+                if(labelQueue.size()>0) {
 			for(ForkJoinTask<?> task : labelQueue) {
 				//while(!x.isDone()) continue;
 				task.join();//x.get();
@@ -465,13 +487,73 @@ public class BidirectionalLabeling implements Runnable{
 //					BidirectionalAstar.updateMemory();
 //			}
 			//nodeWiselabels.clear();
-			labelQueue.clear();
-		}
-	}
-	
-	public void setMaster() {
-		this.master = true;
-	}
+                        labelQueue.clear();
+                }
+        }
+
+        private boolean shouldPrune(Node nextNode, Edge edge, int nextNodeId) {
+                double heuristicScore = computeHeuristicScore(nextNode, edge);
+                ConcurrentHashMap<Integer, Double> cache = isForward ? forwardBestScore : backwardBestScore;
+
+                Double best = cache.get(nextNodeId);
+                if(best != null && heuristicScore >= best * 1.05) {
+                        return true;
+                }
+
+                cache.merge(nextNodeId, heuristicScore, Math::min);
+                return false;
+        }
+
+        private double computeHeuristicScore(Node nextNode, Edge edge) {
+                double pathDistance = topLabel.getDistance() + edge.get_distance();
+                double estimatedRemainingDistance = isForward ? nextNode.get_backward_hDistance() : nextNode.get_forward_hDistance();
+                if(estimatedRemainingDistance==Double.MAX_VALUE) {
+                        estimatedRemainingDistance = budget;
+                }
+                // Travel-time pressure: as we consume budget, distance weight increases so we
+                // prioritize options that satisfy the time constraint sooner.
+                double usedBudgetRatio = (pathDistance + estimatedRemainingDistance) / Math.max(1.0, budget);
+                double adaptiveDistanceWeight = BASE_DISTANCE_WEIGHT * (1.0 + 0.6 * Math.min(1.5, usedBudgetRatio));
+
+                double normalizedDistance = usedBudgetRatio;
+
+                // Narrow-road penalty: distance per unit width (higher when road is narrow). We
+                // amplify weight dynamically when this ratio is already high to minimize the
+                // percentage of narrow travel.
+                double widthEstimate = Math.max(1.0, (edge.getBaseWidth() + edge.getRushWidth()) / 2.0);
+                double narrowPenalty = edge.get_distance() / widthEstimate;
+                double adaptiveWidthWeight = BASE_WIDTH_WEIGHT * (1.0 + 0.4 * Math.min(1.5, narrowPenalty));
+
+                Integer predecessorId = topLabel.getVisitedList().get(topLabel.get_nodeID());
+                boolean sharpTurn = false;
+                if(predecessorId != null && predecessorId >= 0) {
+                        Node previousNode = Graph.get_node(predecessorId);
+                        Node currentNode = Graph.get_node(topLabel.get_nodeID());
+                        sharpTurn = Graph.isSharpRightTurn(previousNode, currentNode, nextNode);
+                }
+
+                int projectedTurns = topLabel.getRightTurns();
+                if(sharpTurn) {
+                        projectedTurns++;
+                }
+                projectedTurns += isForward ? nextNode.get_backward_hRightTurn() : nextNode.get_forward_hRightTurn();
+
+                // Turn penalties: grow as we already accumulate turns or narrow segments to
+                // discourage additional turning on constrained/narrow routes.
+                double turnPressure = projectedTurns / Math.max(1.0, pathDistance);
+                double adaptiveTurnWeight = BASE_TURN_WEIGHT * (1.0 + 0.5 * Math.min(1.5, turnPressure + narrowPenalty * 0.1));
+
+                double adaptiveSharpTurnWeight = BASE_SHARP_TURN_WEIGHT * (1.0 + 0.5 * Math.min(1.5, usedBudgetRatio + narrowPenalty));
+
+                return adaptiveDistanceWeight * normalizedDistance
+                                + adaptiveWidthWeight * narrowPenalty
+                                + adaptiveTurnWeight * projectedTurns
+                                + (sharpTurn ? adaptiveSharpTurnWeight : 0.0);
+        }
+
+        public void setMaster() {
+                this.master = true;
+        }
 	
 	private BreakPoint computeBoundaryBreakpoint(double x1, double y1, double x2, double y2, double allotted_budget) {
 		double x = (allotted_budget+x1*((y2-y1)/(x2-x1))-y1)/(-1+(y2-y1)/(x2-x1));

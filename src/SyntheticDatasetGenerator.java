@@ -36,10 +36,14 @@ public class SyntheticDatasetGenerator {
         Set<EdgeKey> edges = new HashSet<>();
     }
 
+    
     public static void main(String[] args) throws IOException {
         Path coordPath = Paths.get("USA-road-d.NY.co");
         Path distPath = Paths.get("USA-road-d.NY.gr");
         Path timePath = Paths.get("USA-road-t.NY.gr");
+        Path coordPath = args.length > 0 ? Paths.get(args[0]) : Paths.get("USA-road-d.NY.co");
+        Path distPath = args.length > 1 ? Paths.get(args[1]) : Paths.get("USA-road-d.NY.gr");
+        Path timePath = args.length > 2 ? Paths.get(args[2]) : Paths.get("USA-road-t.NY.gr");
 
         Path nodeCityOutput = Paths.get("node-city.txt");
         Path edgeCityOutput = Paths.get("edge-city.txt");
@@ -50,6 +54,22 @@ public class SyntheticDatasetGenerator {
         String rushEnd = "10:00";
         double congestedEdgeThresholdRatio = 1.5;
         double cityEdgeSelectionRate = 0.05;
+
+        // Validate input availability early to fail fast with a helpful message
+        List<Path> missing = new ArrayList<>();
+        for (Path p : new Path[]{coordPath, distPath, timePath}) {
+            if (!Files.isRegularFile(p)) {
+                missing.add(p);
+            }
+        }
+        if (!missing.isEmpty()) {
+            System.err.println("Missing required input files:");
+            for (Path p : missing) {
+                System.err.println(" - " + p.toAbsolutePath());
+            }
+            System.err.println("Provide paths explicitly as arguments: <coords> <distance> <time>");
+            return;
+        }
 
         // Read inputs
         Map<Integer, long[]> coordsRaw = readCoordinates(coordPath);

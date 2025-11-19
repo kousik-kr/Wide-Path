@@ -178,15 +178,29 @@ public class BidirectionalAstar {
 	}
 
 	private static void create_query_bucket() throws IOException{
-		String query_file = currentDirectory + "/" + "Src-dest_" + Graph.get_vertex_count() +".txt";
+		String query_file = currentDirectory + "/Src-dest_" + Graph.get_vertex_count() + ".txt";
 		File fin = new File(query_file);
 		BufferedReader br = new BufferedReader(new FileReader(fin));
 		String line = null;
-		while((line = br.readLine()) != null){
+		while ((line = br.readLine()) != null) {
 			String[] entries = line.split("\t");
-			
-			Query query = new Query(Integer.parseInt(entries[0]), Integer.parseInt(entries[1]), Double.parseDouble(entries[2]), Double.parseDouble(entries[2])+interval_duration, Double.parseDouble(entries[3]));
-			queries.add(query);
+			int source = Integer.parseInt(entries[0]);
+			int destination = Integer.parseInt(entries[1]);
+
+			// Check if source and destination meet the cluster criteria
+			Node sourceNode = Graph.get_node(source);
+			Node destinationNode = Graph.get_node(destination);
+
+			if (sourceNode != null && destinationNode != null) {
+				boolean validSource = sourceInCluster ? sourceNode.getClusterId() != -1 : sourceNode.getClusterId() == -1;
+				boolean validDestination = destinationInCluster ? destinationNode.getClusterId() != -1 : destinationNode.getClusterId() == -1;
+
+				if (validSource && validDestination) {
+					Query query = new Query(source, destination, Double.parseDouble(entries[2]),
+							Double.parseDouble(entries[2]) + interval_duration, Double.parseDouble(entries[3]));
+					queries.add(query);
+				}
+			}
 		}
 		br.close();
 	}

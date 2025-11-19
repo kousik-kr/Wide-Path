@@ -3,21 +3,34 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinTask;
 
 
 public class BidirectionalLabeling implements Runnable{
-	private int goal;
-	private Label topLabel;
-	private double budget;
-	BidirectionalDriver.SharedState shared;
-	private boolean isForward;
-	private boolean master = false;
-	
-	public BidirectionalLabeling(int goal, double b, Label label, BidirectionalDriver.SharedState shared, boolean is_forward){
-		this.goal = goal;
-		this.topLabel = label;
-		this.budget = b;
+        private int goal;
+        private Label topLabel;
+        private double budget;
+        BidirectionalDriver.SharedState shared;
+        private boolean isForward;
+        private boolean master = false;
+
+        // Direction-aware caches to avoid exploring labels that are obviously weaker than
+        // the best heuristic seen for a node. Lower scores are better.
+        private static final ConcurrentHashMap<Integer, Double> forwardBestScore = new ConcurrentHashMap<>();
+        private static final ConcurrentHashMap<Integer, Double> backwardBestScore = new ConcurrentHashMap<>();
+
+        // Heuristic weights chosen empirically to down-rank paths that are long, skinny, or
+        // turn-heavy before spending time on full breakpoint construction.
+        private static final double DISTANCE_WEIGHT = 0.45;
+        private static final double WIDTH_WEIGHT = 0.25;
+        private static final double TURN_WEIGHT = 0.25;
+        private static final double SHARP_TURN_PENALTY = 0.15;
+
+        public BidirectionalLabeling(int goal, double b, Label label, BidirectionalDriver.SharedState shared, boolean is_forward){
+                this.goal = goal;
+                this.topLabel = label;
+                this.budget = b;
 		this.shared = shared;
 		this.isForward = is_forward;
 	}
@@ -55,9 +68,13 @@ public class BidirectionalLabeling implements Runnable{
 	//			if(j==destination) {
 	//				System.out.println("hi");
 	//			}
-				if(Graph.get_node(j).isFeasible() && Graph.get_node(j).get_forward_hTime()<=budget && !topLabel.getVisited(j)) {
-					Function current_arrivaltime_function = topLabel.get_arrivalTime();//current function at node i
-					Function current_width_function = topLabel.get_wide_distance();
+                                if(Graph.get_node(j).isFeasible() && Graph.get_node(j).get_forward_hTime()<=budget && !topLabel.getVisited(j)) {
+                                        Node nextNode = Graph.get_node(j);
+                                        if(shouldPrune(nextNode, edge, j)) {
+                                                continue;
+                                        }
+                                        Function current_arrivaltime_function = topLabel.get_arrivalTime();//current function at node i
+                                        Function current_width_function = topLabel.get_wide_distance();
 					
 					List<BreakPoint> arrival_time_breakpoints = new ArrayList<BreakPoint>();//to store the breakpoints at node j
 					List<BreakPoint> width_breakpoints = new ArrayList<BreakPoint>();
@@ -255,9 +272,13 @@ public class BidirectionalLabeling implements Runnable{
 	//			if(j==destination) {
 	//				System.out.println("hi");
 	//			}
-				if(Graph.get_node(j).isFeasible() && Graph.get_node(j).get_backward_hTime()<=budget && !topLabel.getVisited(j)) {
-					Function current_arrivaltime_function = topLabel.get_arrivalTime();//current function at node i
-					Function current_width_function = topLabel.get_wide_distance();
+                                if(Graph.get_node(j).isFeasible() && Graph.get_node(j).get_backward_hTime()<=budget && !topLabel.getVisited(j)) {
+                                        Node nextNode = Graph.get_node(j);
+                                        if(shouldPrune(nextNode, edge, j)) {
+                                                continue;
+                                        }
+                                        Function current_arrivaltime_function = topLabel.get_arrivalTime();//current function at node i
+                                        Function current_width_function = topLabel.get_wide_distance();
 					
 					List<BreakPoint> arrival_time_breakpoints = new ArrayList<BreakPoint>();//to store the breakpoints at node j
 					List<BreakPoint> width_breakpoints = new ArrayList<BreakPoint>();
@@ -450,11 +471,11 @@ public class BidirectionalLabeling implements Runnable{
 			}
 		}
 		
-		if(master) {
-			if(!BidirectionalAstar.isMemoryUpdated()) 
-				BidirectionalAstar.updateMemory();
-		}
-		if(labelQueue.size()>0) {
+                if(master) {
+                        if(!BidirectionalAstar.isMemoryUpdated())
+                                BidirectionalAstar.updateMemory();
+                }
+                if(labelQueue.size()>0) {
 			for(ForkJoinTask<?> task : labelQueue) {
 				//while(!x.isDone()) continue;
 				task.join();//x.get();
@@ -465,13 +486,61 @@ public class BidirectionalLabeling implements Runnable{
 //					BidirectionalAstar.updateMemory();
 //			}
 			//nodeWiselabels.clear();
-			labelQueue.clear();
-		}
-	}
-	
-	public void setMaster() {
-		this.master = true;
-	}
+                        labelQueue.clear();
+                }
+        }
+
+        private boolean shouldPrune(Node nextNode, Edge edge, int nextNodeId) {
+                double heuristicScore = computeHeuristicScore(nextNode, edge);
+                ConcurrentHashMap<Integer, Double> cache = isForward ? forwardBestScore : backwardBestScore;
+
+                Double best = cache.get(nextNodeId);
+                if(best != null && heuristicScore >= best * 1.05) {
+                        return true;
+                }
+
+                cache.merge(nextNodeId, heuristicScore, Math::min);
+                return false;
+        }
+
+        private double computeHeuristicScore(Node nextNode, Edge edge) {
+                double pathDistance = topLabel.getDistance() + edge.get_distance();
+                double estimatedRemainingDistance = isForward ? nextNode.get_backward_hDistance() : nextNode.get_forward_hDistance();
+                if(estimatedRemainingDistance==Double.MAX_VALUE) {
+                        estimatedRemainingDistance = budget;
+                }
+
+                double normalizedDistance = (pathDistance + estimatedRemainingDistance) / Math.max(1.0, budget);
+
+                // Prefer routes that stay wider for longer segments; use a simple average of rush/base widths.
+                double widthEstimate = (edge.getBaseWidth() + edge.getRushWidth()) / 2.0;
+                double widthScore = widthEstimate / Math.max(1.0, edge.get_distance());
+
+                Integer predecessorId = topLabel.getVisitedList().get(topLabel.get_nodeID());
+                boolean sharpTurn = false;
+                if(predecessorId != null && predecessorId >= 0) {
+                        Node previousNode = Graph.get_node(predecessorId);
+                        Node currentNode = Graph.get_node(topLabel.get_nodeID());
+                        sharpTurn = Graph.isSharpRightTurn(previousNode, currentNode, nextNode);
+                }
+
+                int projectedTurns = topLabel.getRightTurns();
+                if(sharpTurn) {
+                        projectedTurns++;
+                }
+                projectedTurns += isForward ? nextNode.get_backward_hRightTurn() : nextNode.get_forward_hRightTurn();
+
+                double turnPenalty = projectedTurns;
+
+                return DISTANCE_WEIGHT * normalizedDistance
+                                - WIDTH_WEIGHT * widthScore
+                                + TURN_WEIGHT * turnPenalty
+                                + (sharpTurn ? SHARP_TURN_PENALTY : 0.0);
+        }
+
+        public void setMaster() {
+                this.master = true;
+        }
 	
 	private BreakPoint computeBoundaryBreakpoint(double x1, double y1, double x2, double y2, double allotted_budget) {
 		double x = (allotted_budget+x1*((y2-y1)/(x2-x1))-y1)/(-1+(y2-y1)/(x2-x1));

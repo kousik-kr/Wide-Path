@@ -70,6 +70,8 @@ public class BidirectionalAstar {
 		Graph.set_vertex_count(n);
 		extract_nodes();
 		extract_edges();
+		extractClusterInformation(currentDirectory + "/node_" + Graph.get_vertex_count() + ".txt");
+        extractEdgeWidthInformation(currentDirectory + "/edge_" + Graph.get_vertex_count() + ".txt");
 		//if(n==23947347)
 			//create_query_file();
 		create_query_bucket();
@@ -352,4 +354,51 @@ public class BidirectionalAstar {
 //		return subgraphIndexes.get(index);
 //	}
 
+	// Method to extract cluster information from the node file
+    private static void extractClusterInformation(String nodeFilePath) throws IOException {
+        File nodeFile = new File(nodeFilePath);
+        try (BufferedReader br = new BufferedReader(new FileReader(nodeFile))) {
+            String line = br.readLine(); // Skip header line
+            while ((line = br.readLine()) != null) {
+                String[] entries = line.split("\t");
+                int nodeId = Integer.parseInt(entries[0]);
+                int clusterId = Integer.parseInt(entries[3]);
+
+                Node node = Graph.get_node(nodeId);
+                if (node != null) {
+                    node.setClusterId(clusterId);
+                    Cluster cluster = Graph.getCluster(clusterId);
+                    if (cluster == null) {
+                        cluster = new Cluster(clusterId);
+                        Graph.addCluster(cluster);
+                    }
+                    cluster.addNode(node);
+                }
+            }
+        }
+    }
+
+    // Method to extract edge width information from the edge file
+    private static void extractEdgeWidthInformation(String edgeFilePath) throws IOException {
+        File edgeFile = new File(edgeFilePath);
+        try (BufferedReader br = new BufferedReader(new FileReader(edgeFile))) {
+            String line = br.readLine(); // Skip header line
+            while ((line = br.readLine()) != null) {
+                String[] entries = line.split("\t");
+                int source = Integer.parseInt(entries[0]);
+                int destination = Integer.parseInt(entries[1]);
+                double baseWidth = Double.parseDouble(entries[4]);
+                double rushWidth = Double.parseDouble(entries[5]);
+
+                Node sourceNode = Graph.get_node(source);
+                if (sourceNode != null) {
+                    Edge edge = sourceNode.get_outgoing_edges().get(destination);
+                    if (edge != null) {
+                        edge.setWidth(baseWidth);
+                        edge.add_wideness_property(0, new Properties(rushWidth)); // Example usage
+                    }
+                }
+            }
+        }
+    }
 }

@@ -19,6 +19,7 @@ public class Graph {
 	private static	Map<Integer, Node> adjacency_list = new HashMap<Integer, Node>();
 	private static double[] arrivalTimeSeries;
 	private static double[] widthTimeSeries;
+	private static Map<Integer, Cluster> clusters = new HashMap<>(); // Map to store clusters
 	
 	public static int get_vertex_count(){
 		return n_vertexes;
@@ -332,5 +333,28 @@ public class Graph {
 		}
 		
 	}
+	
+	// Add a cluster to the graph
+    public static void addCluster(Cluster cluster) {
+        clusters.put(cluster.getClusterId(), cluster);
+    }
 
+    // Get a cluster by its ID
+    public static Cluster getCluster(int clusterId) {
+        return clusters.get(clusterId);
+    }
+
+    // Get all clusters
+    public static Map<Integer, Cluster> getAllClusters() {
+        return clusters;
+    }
+
+    // Create a cluster and add nodes to it
+    public static void createCluster(int clusterId, List<Node> nodes) {
+        Cluster cluster = new Cluster(clusterId);
+        for (Node node : nodes) {
+            cluster.addNode(node);
+        }
+        addCluster(cluster);
+    }
 }

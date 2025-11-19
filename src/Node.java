@@ -25,6 +25,7 @@ public class Node {
 	private int forward_hRightTurn;//fastest path cost for forward search
 	private boolean forward_reachebility;//fastest path cost for backward search
 	private boolean feasible;
+	private int clusterId = -1; // Default cluster ID is -1 (unclustered)
 
 	public void setForwardHTime(double hTime) {
 		this.forward_hTime = hTime;
@@ -174,4 +175,13 @@ public class Node {
 		this.outgoing_edges = new HashMap<Integer, Edge>();
 	}
 
+	// Getter for cluster ID
+    public int getClusterId() {
+        return clusterId;
+    }
+
+    // Setter for cluster ID
+    public void setClusterId(int clusterId) {
+        this.clusterId = clusterId;
+    }
 }

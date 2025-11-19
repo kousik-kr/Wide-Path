@@ -19,6 +19,8 @@ public class Edge {
 	private double lowest_cost;
 	private double distance;
 	private double width;
+	private double baseWidth; // Width during non-rush hours
+	private double rushWidth; // Width during rush hours
 	
 	public int get_source(){
 		return this.source;
@@ -55,7 +57,7 @@ public class Edge {
 		return this.lowest_cost;
 	}
 
-	public Edge(int src, int dest, double dist, boolean clearway){
+	public Edge(int src, int dest, double dist, boolean clearway, double baseWidth, double rushWidth){
 		this.source = src;
 		this.destination = dest;
 		this.distance = dist;
@@ -64,6 +66,8 @@ public class Edge {
 		if(clearway) {
 			this.wideness_property = new TreeMap<Integer, Properties>();
 		}
+		this.baseWidth = baseWidth;
+		this.rushWidth = rushWidth;
 	}
 
 	public double get_arrival_time(double departure_time){
@@ -125,6 +129,21 @@ public class Edge {
 			return this.width;
 		}
 	}
+	
+	// Getter for base width
+    public double getBaseWidth() {
+        return baseWidth;
+    }
+
+    // Getter for rush width
+    public double getRushWidth() {
+        return rushWidth;
+    }
+
+    // Method to get width based on rush hour status
+    public double getWidth(boolean isRushHour) {
+        return isRushHour ? rushWidth : baseWidth;
+    }
 	
 	private	double linear_function(double x1, double x2, double y1, double y2, double x){
 		return (y2-y1)*(x-x1)/(x2-x1) + y1;

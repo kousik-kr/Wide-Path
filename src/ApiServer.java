@@ -8,6 +8,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.DoubleSummaryStatistics;
@@ -20,6 +21,12 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
 import java.util.stream.Collectors;
 
+/**
+ * Lightweight HTTP facade that exposes node search, metadata, query execution,
+ * and live metrics to the Vite frontend without pulling in a heavier servlet
+ * container. The server relies on {@link Graph}'s static lifecycle and keeps a
+ * minimal demo network in-memory so developers can hit the endpoints immediately.
+ */
 public class ApiServer {
     private static final int DEFAULT_PORT = 8080;
 
@@ -43,6 +50,12 @@ public class ApiServer {
         server.start();
     }
 
+    /**
+     * Seed the static {@link Graph} with the smallest possible network and set
+     * conservative defaults for the A* parameters. This keeps repeated runs
+     * deterministic and prevents null-pointer crashes while the real dataset is
+     * loading.
+     */
     private static void bootstrapGraph() {
         // Minimal defaults so repeated runs don't fail because static fields are unset
         BidirectionalAstar.THRESHOLD = 10;
@@ -89,20 +102,19 @@ public class ApiServer {
         Graph.get_node(dest).insert_incoming_edge(edge);
     }
 
+    /**
+     * Responds with a small list of node summaries. Filtering is intentionally
+     * lightweight (ID substring match) so the endpoint remains responsive even
+     * without a spatial index. The frontend debounces calls before hitting this.
+     */
     private static void handleNodes(HttpExchange exchange) throws IOException {
         if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
             exchange.sendResponseHeaders(405, -1);
             return;
         }
         URI uri = exchange.getRequestURI();
-        String query = Optional.ofNullable(uri.getQuery()).orElse("");
-        String search = "";
-        for (String part : query.split("&")) {
-            if (part.startsWith("search=")) {
-                search = part.substring("search=".length()).toLowerCase(Locale.ROOT);
-                break;
-            }
-        }
+        Map<String, String> queryParams = parseQueryParams(Optional.ofNullable(uri.getQuery()).orElse(""));
+        String search = queryParams.getOrDefault("search", "").toLowerCase(Locale.ROOT);
 
         List<Map<String, Object>> nodes = new ArrayList<>();
         for (Map.Entry<Integer, Node> entry : Graph.get_nodes().entrySet()) {
@@ -123,6 +135,10 @@ public class ApiServer {
         writeJson(exchange, toJsonArray(nodes));
     }
 
+    /**
+     * Emits bounding box metadata for the currently loaded network so the
+     * frontend can fit the map view and display the vertex count.
+     */
     private static void handleNetworkMeta(HttpExchange exchange) throws IOException {
         if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
             exchange.sendResponseHeaders(405, -1);
@@ -140,6 +156,12 @@ public class ApiServer {
         writeJson(exchange, body);
     }
 
+    /**
+     * Runs the bidirectional query end-to-end and returns a GeoJSON feature plus
+     * diagnostics. The handler is intentionally defensive: we default missing
+     * fields, guard against solver errors, and always respond with a valid
+     * JSON payload so the UI can render feedback instead of failing silently.
+     */
     private static void handleRunQuery(HttpExchange exchange) throws IOException {
         if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
             exchange.sendResponseHeaders(405, -1);
@@ -202,6 +224,10 @@ public class ApiServer {
         writeJson(exchange, responseJson);
     }
 
+    /**
+     * Provides a tiny slice of JVM metrics for the live stats panel without
+     * requiring JMX or external probes.
+     */
     private static void handleMetrics(HttpExchange exchange) throws IOException {
         if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
             exchange.sendResponseHeaders(405, -1);
@@ -211,6 +237,18 @@ public class ApiServer {
         double memoryMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024.0 * 1024.0);
         String json = String.format(Locale.ROOT, "{\"memoryMb\":%.2f,\"timestamp\":%d}", memoryMb, System.currentTimeMillis());
         writeJson(exchange, json);
+    }
+
+    private static Map<String, String> parseQueryParams(String query) {
+        Map<String, String> params = new HashMap<>();
+        if (query.isEmpty()) return params;
+        for (String part : query.split("&")) {
+            String[] kv = part.split("=", 2);
+            if (kv.length == 2) {
+                params.put(kv[0], URLDecoder.decode(kv[1], StandardCharsets.UTF_8));
+            }
+        }
+        return params;
     }
 
     private static Map<String, Double> parseNumericJson(String body) {
@@ -245,6 +283,7 @@ public class ApiServer {
     private static void writeJson(HttpExchange exchange, String body) throws IOException {
         Headers headers = exchange.getResponseHeaders();
         headers.set("Content-Type", "application/json; charset=utf-8");
+        headers.set("Access-Control-Allow-Origin", "*");
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.sendResponseHeaders(200, bytes.length);
         try (OutputStream os = exchange.getResponseBody()) {

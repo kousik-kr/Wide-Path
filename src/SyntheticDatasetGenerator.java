@@ -38,9 +38,6 @@ public class SyntheticDatasetGenerator {
 
     
     public static void main(String[] args) throws IOException {
-        Path coordPath = Paths.get("USA-road-d.NY.co");
-        Path distPath = Paths.get("USA-road-d.NY.gr");
-        Path timePath = Paths.get("USA-road-t.NY.gr");
         Path coordPath = args.length > 0 ? Paths.get(args[0]) : Paths.get("USA-road-d.NY.co");
         Path distPath = args.length > 1 ? Paths.get(args[1]) : Paths.get("USA-road-d.NY.gr");
         Path timePath = args.length > 2 ? Paths.get(args[2]) : Paths.get("USA-road-t.NY.gr");

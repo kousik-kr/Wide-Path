@@ -93,9 +93,13 @@ public class Graph {
 		adjacency_list.put(node_id, node);
 	}
 
-	public static Node get_node(int node_id){
-		return adjacency_list.get(node_id);
-	}
+        public static Node get_node(int node_id){
+                return adjacency_list.get(node_id);
+        }
+
+        public static Map<Integer, Node> get_nodes(){
+                return adjacency_list;
+        }
 	
 	public static void reset() {
 		for(Entry<Integer, Node> entry: adjacency_list.entrySet()) {

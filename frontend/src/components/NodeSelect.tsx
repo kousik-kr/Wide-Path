@@ -14,6 +14,7 @@ interface NodeSelectProps {
 export default function NodeSelect({ label, value, onSelect }: NodeSelectProps) {
   const [search, setSearch] = useState('');
   const [manualValue, setManualValue] = useState(value.toString());
+  // Keep a debounced copy so we don't hammer the API on every keystroke.
   const [debounced, setDebounced] = useState('');
 
   useEffect(() => {
@@ -21,6 +22,7 @@ export default function NodeSelect({ label, value, onSelect }: NodeSelectProps) 
     return () => clearTimeout(id);
   }, [search]);
 
+  // Lightweight autocomplete powered by the backend search endpoint.
   const query = useQuery({
     queryKey: ['nodes', debounced],
     queryFn: () => fetchNodes(debounced),

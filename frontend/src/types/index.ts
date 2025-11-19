@@ -15,6 +15,10 @@ export interface RouteGeometry {
   type: 'Feature';
   geometry: GeoJSON.LineString;
   properties: {
+    width: number;
+    clearway: boolean[];
+    timeSeries: number[];
+    widthMeters?: number[];
     width: number[];
     clearway: boolean[];
     timeSeries: number[];

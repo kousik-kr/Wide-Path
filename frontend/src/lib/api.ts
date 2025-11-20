@@ -1,6 +1,6 @@
 import type { NodeSummary, QueryPayload, QueryResponse } from '../types';
 
-const BASE_URL = import.meta.env.VITE_API_BASE ?? '/api';
+export const API_BASE = import.meta.env.VITE_API_BASE ?? '/api';
 
 async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const res = await fetch(input, init);
@@ -12,11 +12,11 @@ async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
 
 export function fetchNodes(search: string) {
   const params = new URLSearchParams({ search });
-  return request<NodeSummary[]>(`${BASE_URL}/nodes?${params.toString()}`);
+  return request<NodeSummary[]>(`${API_BASE}/nodes?${params.toString()}`);
 }
 
 export function runQuery(body: QueryPayload) {
-  return request<QueryResponse>(`${BASE_URL}/queries/run`, {
+  return request<QueryResponse>(`${API_BASE}/queries/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -25,6 +25,6 @@ export function runQuery(body: QueryPayload) {
 
 export function fetchNetworkMetadata() {
   return request<{ vertexCount: number; bounds: [number, number, number, number] }>(
-    `${BASE_URL}/network/meta`
+    `${API_BASE}/network/meta`
   );
 }

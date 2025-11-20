@@ -1,2 +1,13 @@
+# Java build artifacts
+build/
+*.class
+
+# Node and Vite
 frontend/node_modules/
 frontend/dist/
+frontend/.vite/
+
+# Environment files
+.env
+frontend/.env
+frontend/.env.local

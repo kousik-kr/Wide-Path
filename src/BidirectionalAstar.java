@@ -39,14 +39,17 @@ public class BidirectionalAstar {
 	public static Runtime runtime;
 	private static long memory_after;
 	private static boolean updated_memory;
-	public static double TIME_LIMIT;
-	private static double overhead;
-	private static int density;
-	private static int no_of_core;
-	public static boolean optimization = true;
-	private static double interval_duration;
-	public static double THRESHOLD;
-	public static boolean forceStop = false;
+        public static double TIME_LIMIT;
+        private static double overhead;
+        private static int density;
+        private static int no_of_core;
+        public static boolean optimization = true;
+        // Flags to control whether queries should use clustered nodes for sources/destinations
+        private static boolean sourceInCluster = true;
+        private static boolean destinationInCluster = true;
+        private static double interval_duration;
+        public static double THRESHOLD;
+        public static boolean forceStop = false;
 	public static boolean Optimization;
 	public static int SHARP_THRESHOLD = 60;
 	public static double WIDENESS_THRESHOLD = 12.8;
@@ -191,16 +194,16 @@ public class BidirectionalAstar {
 			Node sourceNode = Graph.get_node(source);
 			Node destinationNode = Graph.get_node(destination);
 
-			if (sourceNode != null && destinationNode != null) {
-				boolean validSource = sourceInCluster ? sourceNode.getClusterId() != -1 : sourceNode.getClusterId() == -1;
-				boolean validDestination = destinationInCluster ? destinationNode.getClusterId() != -1 : destinationNode.getClusterId() == -1;
+                        if (sourceNode != null && destinationNode != null) {
+                                boolean validSource = sourceInCluster ? sourceNode.getClusterId() != -1 : sourceNode.getClusterId() == -1;
+                                boolean validDestination = destinationInCluster ? destinationNode.getClusterId() != -1 : destinationNode.getClusterId() == -1;
 
-				if (validSource && validDestination) {
-					Query query = new Query(source, destination, Double.parseDouble(entries[2]),
-							Double.parseDouble(entries[2]) + interval_duration, Double.parseDouble(entries[3]));
-					queries.add(query);
-				}
-			}
+                                if (validSource && validDestination) {
+                                        Query query = new Query(source, destination, Double.parseDouble(entries[2]),
+                                                        Double.parseDouble(entries[2]) + interval_duration, Double.parseDouble(entries[3]));
+                                        queries.add(query);
+                                }
+                        }
 		}
 		br.close();
 	}

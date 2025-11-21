@@ -15,13 +15,10 @@ export interface RouteGeometry {
   type: 'Feature';
   geometry: GeoJSON.LineString;
   properties: {
-    width: number;
-    clearway: boolean[];
-    timeSeries: number[];
+    width?: number;
     widthMeters?: number[];
-    width: number[];
-    clearway: boolean[];
-    timeSeries: number[];
+    clearway?: boolean[];
+    timeSeries?: number[];
   };
 }
 
@@ -39,4 +36,9 @@ export interface NodeSummary {
   latitude: number;
   longitude: number;
   degree: number;
+}
+
+export interface GraphPreview {
+  nodes: { id: number; coord: [number, number] }[];
+  edges: { from: number; to: number; line: [number, number][] }[];
 }

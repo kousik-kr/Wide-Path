@@ -6,6 +6,7 @@ BACKEND_PORT=${BACKEND_PORT:-8080}
 FRONTEND_PORT=${FRONTEND_PORT:-5173}
 API_BASE="${API_BASE:-}"
 MODE="full"
+NVM_VERSION="${NVM_VERSION:-24}"
 
 default_api_base() {
   echo "${API_BASE:-http://localhost:${BACKEND_PORT}/api}"
@@ -36,6 +37,32 @@ require_cmd() {
   fi
 }
 
+maybe_load_nvm() {
+  if command -v nvm >/dev/null 2>&1; then
+    return 0
+  fi
+
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  if [ -s "${NVM_DIR}/nvm.sh" ]; then
+    # shellcheck disable=SC1090
+    . "${NVM_DIR}/nvm.sh"
+  fi
+}
+
+ensure_node() {
+  maybe_load_nvm
+  if command -v nvm >/dev/null 2>&1; then
+    if nvm use "${NVM_VERSION}" >/dev/null 2>&1; then
+      echo "Using Node via nvm ($(node -v))"
+    else
+      echo "Warning: nvm found but Node ${NVM_VERSION} is not installed; using current nvm default." >&2
+      nvm use default >/dev/null 2>&1 || true
+    fi
+  fi
+
+  require_cmd node
+}
+
 build_backend() {
   require_cmd javac
   mkdir -p "$ROOT_DIR/build"
@@ -51,6 +78,7 @@ start_backend() {
 }
 
 start_frontend() {
+  ensure_node
   require_cmd npm
   cd "$ROOT_DIR/frontend"
   if [ ! -d node_modules ]; then

@@ -1,4 +1,4 @@
-import type { NodeSummary, QueryPayload, QueryResponse } from '../types';
+import type { GraphPreview, NodeSummary, QueryPayload, QueryResponse } from '../types';
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? '/api';
 
@@ -27,4 +27,9 @@ export function fetchNetworkMetadata() {
   return request<{ vertexCount: number; bounds: [number, number, number, number] }>(
     `${API_BASE}/network/meta`
   );
+}
+
+export function fetchGraphPreview(maxEdges = 800) {
+  const params = new URLSearchParams({ maxEdges: String(maxEdges) });
+  return request<GraphPreview>(`${API_BASE}/network/graph?${params.toString()}`);
 }

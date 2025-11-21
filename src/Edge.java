@@ -33,7 +33,18 @@ public class Edge {
 	public double get_distance() {
 		return this.distance;
 	}
-	
+
+	public void setBaseWidth(double w) {
+		this.baseWidth = w;
+	}
+	public void setRushWidth(double w) {
+		this.rushWidth = w;
+	}
+
+	public double setDistance(double d) {
+		return this.distance = d;
+	}
+
 	public void setWidth(double w) {
 		this.width = w;
 	}
@@ -57,21 +68,15 @@ public class Edge {
 		return this.lowest_cost;
 	}
 
-        public Edge(int src, int dest, double dist, boolean clearway, double baseWidth, double rushWidth){
+        public Edge(int src, int dest, double baseWidth, double rushWidth){
                 this.source = src;
                 this.destination = dest;
-                this.distance = dist;
-                this.isClearway = clearway;
                 this.time_property = new TreeMap<Integer, Properties>();
-		if(clearway) {
-			this.wideness_property = new TreeMap<Integer, Properties>();
-                }
-                this.baseWidth = baseWidth;
-                this.rushWidth = rushWidth;
+		
         }
 
-        public Edge(int src, int dest, double dist, boolean clearway) {
-                this(src, dest, dist, clearway, 1.0, 1.0);
+        public Edge(int src, int dest) {
+                this(src, dest, 1.0, 1.0);
         }
 
 	public double get_arrival_time(double departure_time){

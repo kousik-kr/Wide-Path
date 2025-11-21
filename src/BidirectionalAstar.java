@@ -56,7 +56,7 @@ public class BidirectionalAstar {
         // Flags to control whether queries should use clustered nodes for sources/destinations
         private static boolean sourceInCluster = true;
         private static boolean destinationInCluster = true;
-        private static double interval_duration;
+        public static double interval_duration;
         public static double THRESHOLD;
         public static boolean forceStop = false;
 	public static boolean Optimization;
@@ -67,7 +67,7 @@ public class BidirectionalAstar {
 //	private static HashMap<Integer, Integer> subgraphIndexes = new HashMap<Integer, Integer>(); 
 //	public static int subgraphSize = 0;
 	
-	public static void main(String[] args) throws IOException, InterruptedException, ExecutionException{
+	public static void driver () throws IOException, InterruptedException, ExecutionException{
 		//currentDirectory = args[0];
 		//String s = "6105";//args[0];
 		int n = 264346;//Integer.parseInt(args[1]);
@@ -87,7 +87,7 @@ public class BidirectionalAstar {
 		//if(n==23947347)
 			//create_query_file();
 		//create_query_bucket();
-		query_processing();
+		//query_processing();
 	}
 	
 	private static void create_query_file() {
@@ -256,11 +256,11 @@ public class BidirectionalAstar {
 
 			int source = Integer.parseInt(entries[0]);
 			int destination = Integer.parseInt(entries[1]);
-			double distance = Double.parseDouble(entries[2]);
-			boolean clearway = Boolean.parseBoolean(entries[3]);
-			String travel_cost = entries[4];
-			String width = entries[3];
-			Edge edge = new Edge(source, destination, distance, clearway);
+			//double distance = Double.parseDouble(entries[2]);
+			//boolean clearway = Boolean.parseBoolean(entries[3]);
+			String travel_cost = entries[2];
+			//String width = entries[3];
+			Edge edge = new Edge(source, destination);
 
 			String[] travel_costs = null;
 			travel_costs = travel_cost.split(",");
@@ -270,19 +270,19 @@ public class BidirectionalAstar {
 				edge.add_time_property(Integer.parseInt(arrival_time_series[i]), properties);
 			}
 
-			if(clearway) {
-				String[] widths = null;
-				widths = width.split(",");
+			// if(clearway) {
+			// 	String[] widths = null;
+			// 	widths = width.split(",");
 
-				for(int i=0;i<widths.length;i++){
-					Properties properties = new Properties(Double.parseDouble(widths[i]));
-					edge.add_wideness_property(Integer.parseInt(width_time_series[i]), properties);
-				}
+			// 	for(int i=0;i<widths.length;i++){
+			// 		Properties properties = new Properties(Double.parseDouble(widths[i]));
+			// 		edge.add_wideness_property(Integer.parseInt(width_time_series[i]), properties);
+			// 	}
 
-			}
-			else {
-				edge.setWidth(Double.parseDouble(width));
-			}
+			// }
+			// else {
+			// 	edge.setWidth(Double.parseDouble(width));
+			// }
 			
 
 			Graph.get_node(source).insert_outgoing_edge(edge);
@@ -384,18 +384,23 @@ public class BidirectionalAstar {
                 System.err.println("Unable to determine vertex count in " + dataDirectory);
                 return false;
             }
+            // Ensure vertex count is propagated to Graph before parsing files
             Graph.set_vertex_count(vertexCount);
 
             extract_nodes();
             extract_edges();
 
-            Path clusterPath = Paths.get(dataDirectory, "node_" + vertexCount + ".txt");
+            Path clusterPath = Paths.get(dataDirectory, "node_" + Graph.get_vertex_count() + ".txt");
             if (Files.exists(clusterPath)) {
                 extractClusterInformation(clusterPath.toString());
+            } else {
+                System.err.println("Cluster file missing: " + clusterPath);
             }
-            Path edgeWidthPath = Paths.get(dataDirectory, "edge_" + vertexCount + ".txt");
+            Path edgeWidthPath = Paths.get(dataDirectory, "edge_" + Graph.get_vertex_count() + ".txt");
             if (Files.exists(edgeWidthPath)) {
                 extractEdgeWidthInformation(edgeWidthPath.toString());
+            } else {
+                System.err.println("Edge width file missing: " + edgeWidthPath);
             }
 
             System.out.println("Loaded graph from " + dataDirectory + " with " + Graph.get_nodes().size() + " nodes.");
@@ -513,18 +518,18 @@ public class BidirectionalAstar {
     private static void extractClusterInformation(String nodeFilePath) throws IOException {
         File nodeFile = new File(nodeFilePath);
         try (BufferedReader br = new BufferedReader(new FileReader(nodeFile))) {
-            String line = br.readLine(); // Skip header line
+            String line = null; // Skip header line
             while ((line = br.readLine()) != null) {
-                line = line.trim();
-                if (line.isEmpty() || line.startsWith("#")) {
-                    continue;
-                }
+                // line = line.trim();
+                // if (line.isEmpty() || line.startsWith("#")) {
+                //     continue;
+                // }
                 String[] entries = line.split("\t");
                 // Guard against malformed lines (e.g., trailing metadata like "city=1")
-                if (entries.length < 4 || !isNumeric(entries[0]) || !isNumeric(entries[3])) {
-                    System.err.println("Skipping cluster line (parse error): " + line);
-                    continue;
-                }
+                // if (entries.length < 4 || !isNumeric(entries[0]) || !isNumeric(entries[3])) {
+                //     System.err.println("Skipping cluster line (parse error): " + line);
+                //     continue;
+                // }
 
                 int nodeId = Integer.parseInt(entries[0]) - 1;
                 int clusterId = Integer.parseInt(entries[3]);
@@ -561,6 +566,8 @@ public class BidirectionalAstar {
                 String[] entries = line.split("\t");
                 int source = Integer.parseInt(entries[0])-1;
                 int destination = Integer.parseInt(entries[1])-1;
+				double distance = Double.parseDouble(entries[2]);
+
                 double baseWidth = Double.parseDouble(entries[4]);
                 double rushWidth = Double.parseDouble(entries[5]);
 
@@ -568,8 +575,9 @@ public class BidirectionalAstar {
                 if (sourceNode != null) {
                     Edge edge = sourceNode.get_outgoing_edges().get(destination);
                     if (edge != null) {
-                        edge.setWidth(baseWidth);
-                        edge.add_wideness_property(0, new Properties(rushWidth)); // Example usage
+						edge.setDistance(distance);
+                        edge.setBaseWidth(baseWidth);
+						edge.setRushWidth(rushWidth);
                     }
                 }
             }

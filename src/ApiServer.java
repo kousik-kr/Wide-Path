@@ -1,15 +1,21 @@
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.BindException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.text.Bidi;
 import java.util.ArrayList;
 import java.util.DoubleSummaryStatistics;
 import java.util.HashMap;
@@ -19,7 +25,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Lightweight HTTP facade that exposes node search, metadata, query execution,
@@ -31,16 +40,18 @@ public class ApiServer {
     private static final int DEFAULT_PORT = 8080;
 
     public static void main(String[] args) throws Exception {
-        int port = DEFAULT_PORT;
-        if (args.length > 0) {
-            try {
-                port = Integer.parseInt(args[0]);
-            } catch (NumberFormatException ignored) { }
+        int port = resolvePort(args);
+
+        initializeGraph();
+
+        HttpServer server;
+        try {
+            server = HttpServer.create(new InetSocketAddress(port), 0);
+        } catch (BindException ex) {
+            System.err.println("Port " + port + " is in use; falling back to an available port.");
+            server = HttpServer.create(new InetSocketAddress(0), 0);
+            port = server.getAddress().getPort();
         }
-
-        bootstrapGraph();
-
-        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext("/api/nodes", ApiServer::handleNodes);
         server.createContext("/api/network/meta", ApiServer::handleNetworkMeta);
         server.createContext("/api/queries/run", ApiServer::handleRunQuery);
@@ -50,6 +61,22 @@ public class ApiServer {
         server.start();
     }
 
+    private static int resolvePort(String[] args) {
+        int port = DEFAULT_PORT;
+        String envPort = System.getenv("BACKEND_PORT");
+        if (envPort != null && !envPort.isBlank()) {
+            try {
+                port = Integer.parseInt(envPort.trim());
+            } catch (NumberFormatException ignored) { }
+        }
+        if (args != null && args.length > 0) {
+            try {
+                port = Integer.parseInt(args[0]);
+            } catch (NumberFormatException ignored) { }
+        }
+        return port;
+    }
+
     /**
      * Seed the static {@link Graph} with the smallest possible network and set
      * conservative defaults for the A* parameters. This keeps repeated runs
@@ -57,13 +84,6 @@ public class ApiServer {
      * loading.
      */
     private static void bootstrapGraph() {
-        // Minimal defaults so repeated runs don't fail because static fields are unset
-        BidirectionalAstar.THRESHOLD = 10;
-        BidirectionalAstar.SHARP_THRESHOLD = 60;
-        BidirectionalAstar.WIDENESS_THRESHOLD = 12.8;
-        BidirectionalAstar.TIME_LIMIT = 5;
-        BidirectionalAstar.pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
-
         // If graph already populated skip
         if (!Graph.get_nodes().isEmpty()) {
             return;
@@ -86,8 +106,226 @@ public class ApiServer {
         addDemoEdge(0, 3, 0.9, false, 12.0, 12.0, 8.0);
     }
 
+    /**
+     * Configure solver defaults then attempt to load the real road network from
+     * disk. Falls back to the built-in demo network if files are missing.
+     */
+    private static void initializeGraph() {
+        configureSolverDefaults();
+
+        if (!Graph.get_nodes().isEmpty()) {
+            return;
+        }
+
+        boolean loaded = loadGraphFromFiles();
+        if (!loaded) {
+            System.err.println("Unable to load road network from disk; starting demo graph instead.");
+            bootstrapGraph();
+        }
+    }
+
+    private static void configureSolverDefaults() {
+        BidirectionalAstar.THRESHOLD = 10;
+        BidirectionalAstar.SHARP_THRESHOLD = 60;
+        BidirectionalAstar.WIDENESS_THRESHOLD = 12.8;
+        BidirectionalAstar.TIME_LIMIT = 5;
+        BidirectionalAstar.pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
+    }
+
+    private static boolean loadGraphFromFiles() {
+        try {
+            Path dataRoot = resolveDataDirectory();
+            if (dataRoot == null) {
+                System.err.println("No graph data directory found. Set GRAPH_DATA_DIR or ensure BidirectionalAstar.currentDirectory exists.");
+                return false;
+            }
+
+            int vertexCount = resolveVertexCount(dataRoot);
+            if (vertexCount <= 0) {
+                System.err.println("Unable to determine vertex count in " + dataRoot);
+                return false;
+            }
+
+            // Path nodesPath = dataRoot.resolve("nodes_" + vertexCount + ".txt");
+            // Path edgesPath = dataRoot.resolve("edges_" + vertexCount + ".txt");
+            // Path clusterPath = dataRoot.resolve("node_" + vertexCount + ".txt");
+            // Path edgeWidthPath = dataRoot.resolve("edge_" + vertexCount + ".txt");
+
+            // if (!Files.exists(nodesPath) || !Files.exists(edgesPath)) {
+            //     System.err.println("Missing required graph files: " + nodesPath + " or " + edgesPath);
+            //     return false;
+            // }
+
+            BidirectionalAstar.driver();
+
+            System.out.println("Loaded road network from " + dataRoot + " with " + Graph.get_nodes().size() + " nodes.");
+            return true;
+        } catch (Exception e) {
+            System.err.println("Error loading graph from files: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private static Path resolveDataDirectory() {
+        String override = System.getenv("GRAPH_DATA_DIR");
+        if (override == null || override.isBlank()) {
+            override = System.getProperty("graph.data.dir", "");
+        }
+        if (!override.isBlank()) {
+            Path dir = Paths.get(override);
+            if (Files.isDirectory(dir)) {
+                return dir;
+            }
+        }
+
+        try {
+            java.lang.reflect.Field field = BidirectionalAstar.class.getDeclaredField("currentDirectory");
+            field.setAccessible(true);
+            String path = (String) field.get(null);
+            if (path != null && !path.isBlank()) {
+                Path dir = Paths.get(path);
+                if (Files.isDirectory(dir)) {
+                    return dir;
+                }
+            }
+        } catch (Exception ignored) { }
+
+        return null;
+    }
+
+    private static int resolveVertexCount(Path dataRoot) throws IOException {
+        String envCount = System.getenv("GRAPH_VERTEX_COUNT");
+        if (envCount != null && !envCount.isBlank()) {
+            try {
+                return Integer.parseInt(envCount.trim());
+            } catch (NumberFormatException ignored) { }
+        }
+
+        Pattern pattern = Pattern.compile("nodes_(\\d+)\\.txt");
+        try (Stream<Path> files = Files.list(dataRoot)) {
+            Optional<Integer> count = files
+                    .map(path -> path.getFileName().toString())
+                    .map(name -> {
+                        Matcher m = pattern.matcher(name);
+                        if (m.matches()) {
+                            return Integer.parseInt(m.group(1));
+                        }
+                        return null;
+                    })
+                    .filter(val -> val != null)
+                    .max(Integer::compareTo);
+            return count.orElse(0);
+        }
+    }
+
+    private static void loadNodes(Path nodesPath) throws IOException {
+        try (BufferedReader br = Files.newBufferedReader(nodesPath, StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                String[] entries = line.split(" ");
+                if (entries.length < 3) continue;
+                Node node = new Node(Double.parseDouble(entries[1]), Double.parseDouble(entries[2]));
+                Graph.add_node(Integer.parseInt(entries[0]), node);
+            }
+        }
+    }
+
+    private static void loadEdges(Path edgesPath) throws IOException {
+        try (BufferedReader br = Files.newBufferedReader(edgesPath, StandardCharsets.UTF_8)) {
+            String line = br.readLine();
+            String[] arrivalTimeSeries = line != null ? line.split(" ") : new String[0];
+            line = br.readLine();
+            String[] widthTimeSeries = line != null ? line.split(" ") : new String[0];
+            Graph.updateArrivalTimeSeries(arrivalTimeSeries);
+            Graph.updateWidthTimeSeries(widthTimeSeries);
+
+            while ((line = br.readLine()) != null) {
+                String[] entries = line.split(" ");
+                if (entries.length < 5) continue;
+
+                int source = Integer.parseInt(entries[0]);
+                int destination = Integer.parseInt(entries[1]);
+                double distance = Double.parseDouble(entries[2]);
+                boolean clearway = Boolean.parseBoolean(entries[3]);
+                String travelCost = entries[4];
+                String width = entries[3];
+
+                Edge edge = new Edge(source, destination);
+                String[] travelCosts = travelCost.split(",");
+                for (int i = 0; i < travelCosts.length; i++) {
+                    Properties properties = new Properties(Double.parseDouble(travelCosts[i]));
+                    edge.add_time_property(Integer.parseInt(arrivalTimeSeries[i]), properties);
+                }
+
+                if (clearway) {
+                    String[] widths = width.split(",");
+                    for (int i = 0; i < widths.length; i++) {
+                        Properties properties = new Properties(Double.parseDouble(widths[i]));
+                        edge.add_wideness_property(Integer.parseInt(widthTimeSeries[i]), properties);
+                    }
+                } else {
+                    edge.setWidth(Double.parseDouble(width));
+                }
+
+                Node srcNode = Graph.get_node(source);
+                Node dstNode = Graph.get_node(destination);
+                if (srcNode != null && dstNode != null) {
+                    srcNode.insert_outgoing_edge(edge);
+                    dstNode.insert_incoming_edge(edge);
+                }
+            }
+        }
+    }
+
+    private static void loadClusterInfo(Path clusterPath) throws IOException {
+        try (BufferedReader br = Files.newBufferedReader(clusterPath, StandardCharsets.UTF_8)) {
+            String line = br.readLine(); // Skip header
+            while ((line = br.readLine()) != null) {
+                String[] entries = line.split("\t");
+                if (entries.length < 4) continue;
+                int nodeId = Integer.parseInt(entries[0]);
+                int clusterId = Integer.parseInt(entries[3]);
+
+                Node node = Graph.get_node(nodeId);
+                if (node != null) {
+                    node.setClusterId(clusterId);
+                    Cluster cluster = Graph.getCluster(clusterId);
+                    if (cluster == null) {
+                        cluster = new Cluster(clusterId);
+                        Graph.addCluster(cluster);
+                    }
+                    cluster.addNode(node);
+                }
+            }
+        }
+    }
+
+    private static void loadEdgeWidthInfo(Path edgeWidthPath) throws IOException {
+        try (BufferedReader br = Files.newBufferedReader(edgeWidthPath, StandardCharsets.UTF_8)) {
+            String line = br.readLine(); // Skip header
+            while ((line = br.readLine()) != null) {
+                String[] entries = line.split("\t");
+                if (entries.length < 6) continue;
+                int source = Integer.parseInt(entries[0]);
+                int destination = Integer.parseInt(entries[1]);
+                double baseWidth = Double.parseDouble(entries[4]);
+                double rushWidth = Double.parseDouble(entries[5]);
+
+                Node sourceNode = Graph.get_node(source);
+                if (sourceNode != null) {
+                    Edge edge = sourceNode.get_outgoing_edges().get(destination);
+                    if (edge != null) {
+                        edge.setWidth(baseWidth);
+                        edge.add_wideness_property(0, new Properties(rushWidth));
+                    }
+                }
+            }
+        }
+    }
+
     private static void addDemoEdge(int src, int dest, double distance, boolean clearway, double baseWidth, double rushWidth, double travelMinutes) {
-        Edge edge = new Edge(src, dest, distance, clearway, baseWidth, rushWidth);
+        Edge edge = new Edge(src, dest, baseWidth, rushWidth);
         edge.add_time_property(0, new Properties(travelMinutes));
         edge.add_time_property(720, new Properties(travelMinutes));
         edge.add_time_property(1440, new Properties(travelMinutes));
@@ -175,7 +413,7 @@ public class ApiServer {
         double departure = payload.getOrDefault("startDepartureMinutes", 0.0);
         double budget = payload.getOrDefault("budgetMinutes", 60.0);
 
-        Query query = new Query(source, destination, departure, departure + budget, budget);
+        Query query = new Query(source, destination, departure, departure + BidirectionalAstar.interval_duration, budget);
         Result result = null;
         long start = System.currentTimeMillis();
         try {

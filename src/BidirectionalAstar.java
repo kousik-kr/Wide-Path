@@ -8,6 +8,10 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -17,9 +21,13 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Random;
+import java.util.Set;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * 
@@ -29,7 +37,8 @@ public class BidirectionalAstar {
 	/**
 	 * @param args
 	 */
-	private static final String currentDirectory = System.getProperty("user.dir");	//current directory of the code
+	private static final String currentDirectory = "/home/gunturi/eclipse-workspace/Wide-Path/";	//current directory of the code
+    private static String dataDirectory = currentDirectory;
 	//public static int MAX_SPEED = 2400;
 	private static Queue<Query> queries = new LinkedList<Query>();
 	//public static double departure_time = 0;
@@ -73,11 +82,11 @@ public class BidirectionalAstar {
 		Graph.set_vertex_count(n);
 		extract_nodes();
 		extract_edges();
-		extractClusterInformation(currentDirectory + "/node_" + Graph.get_vertex_count() + ".txt");
-        extractEdgeWidthInformation(currentDirectory + "/edge_" + Graph.get_vertex_count() + ".txt");
+		extractClusterInformation(currentDirectory + "node_" + Graph.get_vertex_count() + ".txt");
+        extractEdgeWidthInformation(currentDirectory + "edge_" + Graph.get_vertex_count() + ".txt");
 		//if(n==23947347)
 			//create_query_file();
-		create_query_bucket();
+		//create_query_bucket();
 		query_processing();
 	}
 	
@@ -181,7 +190,7 @@ public class BidirectionalAstar {
 	}
 
 	private static void create_query_bucket() throws IOException{
-		String query_file = currentDirectory + "/Src-dest_" + Graph.get_vertex_count() + ".txt";
+		String query_file = dataDirectory + "/Src-dest_" + Graph.get_vertex_count() + ".txt";
 		File fin = new File(query_file);
 		BufferedReader br = new BufferedReader(new FileReader(fin));
 		String line = null;
@@ -209,7 +218,7 @@ public class BidirectionalAstar {
 	}
 
 	private static void extract_nodes() throws NumberFormatException, IOException{
-		String node_file = currentDirectory + "/" + "nodes_" + Graph.get_vertex_count() +".txt";
+		String node_file = dataDirectory + "/" + "nodes_" + Graph.get_vertex_count() +".txt";
 		File fin = new File(node_file);
 		BufferedReader br = new BufferedReader(new FileReader(fin));
 		String line = null;
@@ -223,7 +232,7 @@ public class BidirectionalAstar {
 	}
 
 	private static void extract_edges() throws NumberFormatException, IOException{
-		String edge_file = currentDirectory + "/" + "edges_" + Graph.get_vertex_count()+ ".txt";
+		String edge_file = dataDirectory + "/" + "edges_" + Graph.get_vertex_count()+ ".txt";
 		File fin = new File(edge_file);
 		BufferedReader br = new BufferedReader(new FileReader(fin));
 		String line;
@@ -344,6 +353,135 @@ public class BidirectionalAstar {
 		System.out.println("All query processing is done.");
 	}
 
+    /**
+     * Configure solver defaults so repeated runs have consistent thresholds.
+     */
+    public static void configureDefaults() {
+        THRESHOLD = 10;
+        SHARP_THRESHOLD = 60;
+        WIDENESS_THRESHOLD = 12.8;
+        TIME_LIMIT = 5;
+        pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
+    }
+
+    /**
+     * Load the graph from disk using the parsing routines in this class. The
+     * directory and vertex count may be overridden, otherwise GRAPH_DATA_DIR
+     * and GRAPH_VERTEX_COUNT are respected, falling back to the built-in
+     * default path.
+     */
+    public static boolean loadGraphFromDisk(String directoryOverride, Integer vertexCountOverride) {
+        try {
+            String dir = resolveDataDirectory(directoryOverride);
+            if (dir == null) {
+                System.err.println("No graph data directory found. Set GRAPH_DATA_DIR or provide an override.");
+                return false;
+            }
+            dataDirectory = dir.endsWith(File.separator) ? dir : dir + File.separator;
+
+            int vertexCount = resolveVertexCount(dataDirectory, vertexCountOverride);
+            if (vertexCount <= 0) {
+                System.err.println("Unable to determine vertex count in " + dataDirectory);
+                return false;
+            }
+            Graph.set_vertex_count(vertexCount);
+
+            extract_nodes();
+            extract_edges();
+
+            Path clusterPath = Paths.get(dataDirectory, "node_" + vertexCount + ".txt");
+            if (Files.exists(clusterPath)) {
+                extractClusterInformation(clusterPath.toString());
+            }
+            Path edgeWidthPath = Paths.get(dataDirectory, "edge_" + vertexCount + ".txt");
+            if (Files.exists(edgeWidthPath)) {
+                extractEdgeWidthInformation(edgeWidthPath.toString());
+            }
+
+            System.out.println("Loaded graph from " + dataDirectory + " with " + Graph.get_nodes().size() + " nodes.");
+            return true;
+        } catch (Exception e) {
+            System.err.println("Error loading graph from files: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private static String resolveDataDirectory(String override) {
+        if (override != null && !override.isBlank()) {
+            Path p = Paths.get(override);
+            if (Files.isDirectory(p)) {
+                return p.toString();
+            }
+        }
+        String env = System.getenv("GRAPH_DATA_DIR");
+        if (env != null && !env.isBlank()) {
+            Path p = Paths.get(env);
+            if (Files.isDirectory(p)) {
+                return p.toString();
+            }
+        }
+        if (Files.isDirectory(Paths.get(currentDirectory))) {
+            return currentDirectory;
+        }
+        return null;
+    }
+
+    private static int resolveVertexCount(String dir, Integer override) throws IOException {
+        if (override != null && override > 0) {
+            return override;
+        }
+        String env = System.getenv("GRAPH_VERTEX_COUNT");
+        if (env != null && !env.isBlank()) {
+            try {
+                return Integer.parseInt(env.trim());
+            } catch (NumberFormatException ignored) { }
+        }
+        Pattern pattern = Pattern.compile("nodes_(\\d+)\\.txt");
+        try (Stream<Path> files = Files.list(Paths.get(dir))) {
+            return files
+                    .map(path -> path.getFileName().toString())
+                    .map(name -> {
+                        Matcher m = pattern.matcher(name);
+                        if (m.matches()) {
+                            return Integer.parseInt(m.group(1));
+                        }
+                        return null;
+                    })
+                    .filter(v -> v != null)
+                    .max(Integer::compareTo)
+                    .orElse(0);
+        }
+    }
+
+    /**
+     * Convenience entry point for a single query invoked by the API layer.
+     * Mirrors the driver used in {@link #query_processing()} but accepts
+     * explicit parameters for source/destination, departure, and budget.
+     */
+    public static Result runSingleQuery(int source, int destination, double departureMinutes, double budgetMinutes)
+            throws InterruptedException, ExecutionException {
+        Query query = new Query(source, destination, departureMinutes, departureMinutes + budgetMinutes, budgetMinutes);
+        BidirectionalDriver driver = new BidirectionalDriver(query, budgetMinutes);
+        try {
+            return driver.driver();
+        } finally {
+            Graph.reset();
+        }
+    }
+
+    /**
+     * API-friendly entry point matching the legacy naming.
+     */
+    public static Result queryProcessing(int source, int destination, double departureMinutes, double budgetMinutes)
+            throws InterruptedException, ExecutionException {
+        return runSingleQuery(source, destination, departureMinutes, budgetMinutes);
+    }
+
+    public static Result queryProcessing(Query query) throws InterruptedException, ExecutionException {
+        return runSingleQuery(query.get_source(), query.get_destination(), query.get_start_departure_time(), query.get_budget());
+    }
+
 	public static void updateMemory() {
 		//runtime.gc();
 		memory_after = runtime.totalMemory() - runtime.freeMemory();
@@ -377,8 +515,18 @@ public class BidirectionalAstar {
         try (BufferedReader br = new BufferedReader(new FileReader(nodeFile))) {
             String line = br.readLine(); // Skip header line
             while ((line = br.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty() || line.startsWith("#")) {
+                    continue;
+                }
                 String[] entries = line.split("\t");
-                int nodeId = Integer.parseInt(entries[0]);
+                // Guard against malformed lines (e.g., trailing metadata like "city=1")
+                if (entries.length < 4 || !isNumeric(entries[0]) || !isNumeric(entries[3])) {
+                    System.err.println("Skipping cluster line (parse error): " + line);
+                    continue;
+                }
+
+                int nodeId = Integer.parseInt(entries[0]) - 1;
                 int clusterId = Integer.parseInt(entries[3]);
 
                 Node node = Graph.get_node(nodeId);
@@ -395,6 +543,15 @@ public class BidirectionalAstar {
         }
     }
 
+    private static boolean isNumeric(String value) {
+        try {
+            Integer.parseInt(value.trim());
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
     // Method to extract edge width information from the edge file
     private static void extractEdgeWidthInformation(String edgeFilePath) throws IOException {
         File edgeFile = new File(edgeFilePath);
@@ -402,8 +559,8 @@ public class BidirectionalAstar {
             String line = br.readLine(); // Skip header line
             while ((line = br.readLine()) != null) {
                 String[] entries = line.split("\t");
-                int source = Integer.parseInt(entries[0]);
-                int destination = Integer.parseInt(entries[1]);
+                int source = Integer.parseInt(entries[0])-1;
+                int destination = Integer.parseInt(entries[1])-1;
                 double baseWidth = Double.parseDouble(entries[4]);
                 double rushWidth = Double.parseDouble(entries[5]);
 

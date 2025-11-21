@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -98,9 +99,11 @@ public class BidirectionalDriver {
 
 
 	public Result driver() throws InterruptedException, ExecutionException {
+		System.out.println("[Query] Starting driver for " + source + " -> " + destination + " budget=" + budget);
 		Graph.forwardAstar(source, destination, budget);
-		
+		System.out.println("[Query] Forward A* finished");
 		Graph.backwardAstar(source, destination, budget);
+		System.out.println("[Query] Backward A* finished");
 
 		if(Graph.get_node(source).isFeasible()) {
 			SharedState shared = new SharedState();
@@ -173,6 +176,7 @@ public class BidirectionalDriver {
 			ForkJoinTask<?> backwardFuture = BidirectionalAstar.pool.submit(backward_task);
 			forwardFuture.join();
 			backwardFuture.join();
+			System.out.println("[Query] Labeling tasks joined. Intersections=" + shared.intersectionNodes.size());
 //			String analysis_file = "Analysis"+index+"_" + Graph.get_vertex_count() +".txt";
 //			FileWriter fanalysis = new FileWriter(analysis_file);
 //			BufferedWriter writer2 = new BufferedWriter(fanalysis);
@@ -194,9 +198,10 @@ public class BidirectionalDriver {
 //			Map<Integer,List<Label>> backward_labels = backwardSolver.call();
 			//Map<Integer,Result> pruned_backward_labels = pruneDomination(backward_labels);
 			Result result = formOutputLabels(shared.intersectionNodes, shared.forwardVisited, shared.backwardVisited);
-			
+			System.out.println("[Query] Result built, returning to caller.");
 			return result;
 		}
+		System.out.println("[Query] Source not feasible after A*; returning null.");
 		return null;
 	}
 
@@ -463,8 +468,89 @@ public class BidirectionalDriver {
 		//writer2.flush();
 		//writer3.flush();
 		int total_right_turns = current_forward_label.getRightTurns()+current_backward_label.getRightTurns();
-		Result result = new Result(dep_time, scr, total_right_turns);
-		return result;
+
+		List<Integer> path = buildPath(current_forward_label, current_backward_label);
+		PathInfo info = summarizePath(path);
+
+		return new Result(dep_time, scr, total_right_turns, info.sharpTurns, info.travelTime, path, info.wideEdgeIndices);
+	}
+
+	private List<Integer> buildPath(Label forwardLabel, Label backwardLabel) {
+		int meet = forwardLabel.get_nodeID();
+		List<Integer> forwardPath = new ArrayList<Integer>();
+
+		Map<Integer, Integer> fVisited = forwardLabel.getVisitedList();
+		int cur = meet;
+		while (true) {
+			forwardPath.add(cur);
+			Integer pred = fVisited.get(cur);
+			if (pred == null || pred == -1 || pred == cur) break;
+			cur = pred;
+		}
+		Collections.reverse(forwardPath);
+
+		List<Integer> backwardPath = new ArrayList<Integer>();
+		Map<Integer, Integer> bVisited = backwardLabel.getVisitedList();
+		Integer next = bVisited.get(meet);
+		while (next != null && next != -1 && next != meet) {
+			backwardPath.add(next);
+			next = bVisited.get(next);
+		}
+
+		List<Integer> full = new ArrayList<Integer>(forwardPath);
+		full.addAll(backwardPath);
+		return full;
+	}
+
+	private static class PathInfo {
+		final double travelTime;
+		final int sharpTurns;
+		final List<Integer> wideEdgeIndices;
+
+		PathInfo(double travelTime, int sharpTurns, List<Integer> wideEdgeIndices) {
+			this.travelTime = travelTime;
+			this.sharpTurns = sharpTurns;
+			this.wideEdgeIndices = wideEdgeIndices;
+		}
+	}
+
+	private PathInfo summarizePath(List<Integer> path) {
+		if (path == null || path.size() < 2) {
+			return new PathInfo(0, 0, Collections.emptyList());
+		}
+		double travel = 0;
+		int sharp = 0;
+		List<Integer> wideIndices = new ArrayList<Integer>();
+
+		for (int i = 0; i < path.size() - 1; i++) {
+			int u = path.get(i);
+			int v = path.get(i + 1);
+			Edge edge = null;
+			Node from = Graph.get_node(u);
+			if (from != null && from.get_outgoing_edges().containsKey(v)) {
+				edge = from.get_outgoing_edges().get(v);
+			} else {
+				Node alt = Graph.get_node(v);
+				if (alt != null && alt.get_outgoing_edges().containsKey(u)) {
+					edge = alt.get_outgoing_edges().get(u);
+				}
+			}
+			if (edge != null) {
+				travel += edge.getLowestCost();
+				if (!edge.is_clearway() && edge.get_width(0) >= BidirectionalAstar.WIDENESS_THRESHOLD) {
+					wideIndices.add(i);
+				}
+			}
+			if (i > 0) {
+				Node prev = Graph.get_node(path.get(i - 1));
+				Node cur = from;
+				Node nxt = Graph.get_node(v);
+				if (prev != null && cur != null && nxt != null && Graph.isSharpRightTurn(prev, cur, nxt)) {
+					sharp++;
+				}
+			}
+		}
+		return new PathInfo(travel, sharp, wideIndices);
 	}
 	
 	private static List<BreakPoint> createScoreBreakpoints(List<Double> time_series) {

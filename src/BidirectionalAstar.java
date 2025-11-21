@@ -37,8 +37,11 @@ public class BidirectionalAstar {
 	/**
 	 * @param args
 	 */
-	private static final String currentDirectory = "/home/gunturi/eclipse-workspace/Wide-Path/";	//current directory of the code
+	private static final String currentDirectory = "C:\\Users\\kousi\\Wide-Path\\";	//current directory of the code
+	private static final int defaultVertexCount = 264346;
     private static String dataDirectory = currentDirectory;
+    private static String configuredGraphDataDir = currentDirectory;
+    private static int configuredGraphVertexCount = defaultVertexCount;
 	//public static int MAX_SPEED = 2400;
 	private static Queue<Query> queries = new LinkedList<Query>();
 	//public static double departure_time = 0;
@@ -363,22 +366,23 @@ public class BidirectionalAstar {
         TIME_LIMIT = 5;
         interval_duration = interval_duration > 0 ? interval_duration : 360;
         pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
+        System.out.println("[Init] Defaults configured. Thresholds set and pool size=" + pool.getParallelism());
     }
 
     /**
      * Load the graph from disk using the parsing routines in this class. The
-     * directory and vertex count may be overridden, otherwise GRAPH_DATA_DIR
-     * and GRAPH_VERTEX_COUNT are respected, falling back to the built-in
-     * default path.
+     * directory and vertex count may be overridden; otherwise the configured
+     * static defaults are used, falling back to the built-in default path.
      */
     public static boolean loadGraphFromDisk(String directoryOverride, Integer vertexCountOverride) {
         try {
             String dir = resolveDataDirectory(directoryOverride);
             if (dir == null) {
-                System.err.println("No graph data directory found. Set GRAPH_DATA_DIR or provide an override.");
+                System.err.println("No graph data directory found. Set configuredGraphDataDir or provide an override.");
                 return false;
             }
             dataDirectory = dir.endsWith(File.separator) ? dir : dir + File.separator;
+            System.out.println("[Load] Using data directory: " + dataDirectory);
 
             int vertexCount = resolveVertexCount(dataDirectory, vertexCountOverride);
             if (vertexCount <= 0) {
@@ -387,9 +391,12 @@ public class BidirectionalAstar {
             }
             // Ensure vertex count is propagated to Graph before parsing files
             Graph.set_vertex_count(vertexCount);
+            System.out.println("[Load] Resolved vertex count: " + vertexCount);
 
             extract_nodes();
+            System.out.println("[Load] Nodes extracted: " + Graph.get_nodes().size());
             extract_edges();
+            System.out.println("[Load] Edges extracted.");
 
             Path clusterPath = Paths.get(dataDirectory, "node_" + Graph.get_vertex_count() + ".txt");
             if (Files.exists(clusterPath)) {
@@ -420,13 +427,14 @@ public class BidirectionalAstar {
                 return p.toString();
             }
         }
-        String env = System.getenv("GRAPH_DATA_DIR");
-        if (env != null && !env.isBlank()) {
-            Path p = Paths.get(env);
+
+        if (configuredGraphDataDir != null && !configuredGraphDataDir.isBlank()) {
+            Path p = Paths.get(configuredGraphDataDir);
             if (Files.isDirectory(p)) {
                 return p.toString();
             }
         }
+
         if (Files.isDirectory(Paths.get(currentDirectory))) {
             return currentDirectory;
         }
@@ -437,15 +445,10 @@ public class BidirectionalAstar {
         if (override != null && override > 0) {
             return override;
         }
-        String env = System.getenv("GRAPH_VERTEX_COUNT");
-        if (env != null && !env.isBlank()) {
-            try {
-                return Integer.parseInt(env.trim());
-            } catch (NumberFormatException ignored) { }
-        }
+
         Pattern pattern = Pattern.compile("nodes_(\\d+)\\.txt");
         try (Stream<Path> files = Files.list(Paths.get(dir))) {
-            return files
+            int detected = files
                     .map(path -> path.getFileName().toString())
                     .map(name -> {
                         Matcher m = pattern.matcher(name);
@@ -457,31 +460,31 @@ public class BidirectionalAstar {
                     .filter(v -> v != null)
                     .max(Integer::compareTo)
                     .orElse(0);
+            if (detected > 0) {
+                return detected;
+            }
         }
+
+        return configuredGraphVertexCount > 0 ? configuredGraphVertexCount : defaultVertexCount;
     }
 
-    /**
-     * Convenience entry point for a single query invoked by the API layer.
-     * Mirrors the driver used in {@link #query_processing()} but accepts
-     * explicit parameters for source/destination, departure, and budget.
-     */
-    public static Result runSingleQuery(int source, int destination, double departureMinutes, double budgetMinutes)
-            throws InterruptedException, ExecutionException {
-        return runSingleQuery(source, destination, departureMinutes, budgetMinutes, budgetMinutes);
+    public static void setConfiguredGraphDataDir(String path) {
+        configuredGraphDataDir = path;
     }
 
-    /**
-     * API-friendly entry point matching the legacy naming.
-     */
-    public static Result queryProcessing(int source, int destination, double departureMinutes, double budgetMinutes)
-            throws InterruptedException, ExecutionException {
-        return runSingleQuery(source, destination, departureMinutes, budgetMinutes);
+    public static String getConfiguredGraphDataDir() {
+        return configuredGraphDataDir;
     }
 
-    public static Result queryProcessing(Query query) throws InterruptedException, ExecutionException {
-        return runSingleQuery(query.get_source(), query.get_destination(), query.get_start_departure_time(), query.get_budget());
+    public static void setConfiguredGraphVertexCount(int vertexCount) {
+        configuredGraphVertexCount = vertexCount;
     }
 
+    public static int getConfiguredGraphVertexCount() {
+        return configuredGraphVertexCount;
+    }
+
+   
     /**
      * Run a single query with an explicit interval duration for the end time window.
      */

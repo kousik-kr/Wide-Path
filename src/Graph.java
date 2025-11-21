@@ -135,6 +135,7 @@ public class Graph {
 	}
 	
 	public static void forwardAstar(int source, int destination, double budget){
+		System.out.println("[ForwardA*] source=" + source + " dest=" + destination + " budget=" + budget);
 
 		//Map<Integer,Double> hScore = new HashMap<Integer, Double>();
 		Map<Integer, Double> gTime = new HashMap<Integer, Double>();
@@ -170,6 +171,9 @@ public class Graph {
 		while(!pQueue.isEmpty()) {
 
 			int current_vertex = pQueue.poll();
+			if (pQueue.size() % 5000 == 0) {
+				System.out.println("[ForwardA*] queue size=" + pQueue.size());
+			}
 			
 			Node node = get_node(current_vertex);
 			double current_cost = gTime.get(current_vertex);
@@ -237,6 +241,7 @@ public class Graph {
 	}
 
 	public static void backwardAstar(int source, int destination, double budget){
+		System.out.println("[BackwardA*] source=" + source + " dest=" + destination + " budget=" + budget);
 
 		Map<Integer,Double> hTime = new HashMap<Integer, Double>();
 		Map<Integer, Double> gTime = new HashMap<Integer, Double>();
@@ -273,6 +278,9 @@ public class Graph {
 		while(!pQueue.isEmpty()) {
 
 			int current_vertex = pQueue.poll();
+			if (pQueue.size() % 5000 == 0) {
+				System.out.println("[BackwardA*] queue size=" + pQueue.size());
+			}
 			Node node = get_node(current_vertex);
 			double current_cost = gTime.get(current_vertex);
 			double current_wide_distance = gWideDistance.get(current_vertex);

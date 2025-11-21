@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.Bidi;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.DoubleSummaryStatistics;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -139,7 +140,7 @@ public class ApiServer {
         try {
             Path dataRoot = resolveDataDirectory();
             if (dataRoot == null) {
-                System.err.println("No graph data directory found. Set GRAPH_DATA_DIR or ensure BidirectionalAstar.currentDirectory exists.");
+                System.err.println("No graph data directory found. Set BidirectionalAstar configuredGraphDataDir or ensure BidirectionalAstar.currentDirectory exists.");
                 return false;
             }
 
@@ -171,12 +172,9 @@ public class ApiServer {
     }
 
     private static Path resolveDataDirectory() {
-        String override = System.getenv("GRAPH_DATA_DIR");
-        if (override == null || override.isBlank()) {
-            override = System.getProperty("graph.data.dir", "");
-        }
-        if (!override.isBlank()) {
-            Path dir = Paths.get(override);
+        String configured = BidirectionalAstar.getConfiguredGraphDataDir();
+        if (configured != null && !configured.isBlank()) {
+            Path dir = Paths.get(configured);
             if (Files.isDirectory(dir)) {
                 return dir;
             }
@@ -198,13 +196,6 @@ public class ApiServer {
     }
 
     private static int resolveVertexCount(Path dataRoot) throws IOException {
-        String envCount = System.getenv("GRAPH_VERTEX_COUNT");
-        if (envCount != null && !envCount.isBlank()) {
-            try {
-                return Integer.parseInt(envCount.trim());
-            } catch (NumberFormatException ignored) { }
-        }
-
         Pattern pattern = Pattern.compile("nodes_(\\d+)\\.txt");
         try (Stream<Path> files = Files.list(dataRoot)) {
             Optional<Integer> count = files
@@ -218,8 +209,13 @@ public class ApiServer {
                     })
                     .filter(val -> val != null)
                     .max(Integer::compareTo);
-            return count.orElse(0);
+            if (count.isPresent()) {
+                return count.get();
+            }
         }
+
+        int configured = BidirectionalAstar.getConfiguredGraphVertexCount();
+        return Math.max(configured, 0);
     }
 
     private static void loadNodes(Path nodesPath) throws IOException {
@@ -505,7 +501,14 @@ public class ApiServer {
         double memoryMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024.0 * 1024.0);
 
         if (result == null) {
-            result = new Result(departure, 0.0, 0);
+            result = new Result(
+                    departure,
+                    0.0,
+                    0,
+                    0,
+                    0.0,
+                    Collections.emptyList(),
+                    Collections.emptyList());
         }
 
         Node sourceNode = Graph.get_node(source);

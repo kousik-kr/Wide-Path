@@ -31,7 +31,17 @@ export default function MapCanvas() {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !current) return;
+    if (!map) return;
+
+    if (!current) {
+      if (map.getSource('route')) {
+        (map.getSource('route') as maplibregl.GeoJSONSource).setData({
+          type: 'FeatureCollection',
+          features: []
+        });
+      }
+      return;
+    }
 
     const updateRoute = () => {
       const sourceId = 'route';
@@ -151,6 +161,22 @@ export default function MapCanvas() {
             'circle-stroke-color': '#0f172a',
             'circle-stroke-width': 0.8,
             'circle-opacity': 0.8
+          }
+        });
+        map.addLayer({
+          id: 'graph-node-labels',
+          type: 'symbol',
+          source: sourceId,
+          filter: ['==', '$type', 'Point'],
+          layout: {
+            'text-field': ['to-string', ['get', 'id']],
+            'text-size': 11,
+            'text-anchor': 'center'
+          },
+          paint: {
+            'text-color': '#e2e8f0',
+            'text-halo-color': '#0f172a',
+            'text-halo-width': 0.6
           }
         });
       } else {

@@ -5,6 +5,7 @@ type RouteState = {
   current?: { payload: QueryPayload; response: QueryResponse };
   history: Array<{ id: string; payload: QueryPayload; response: QueryResponse }>;
   setCurrent: (payload: QueryPayload, response: QueryResponse) => void;
+  clearCurrent: () => void;
 };
 
 export const useRouteStore = create<RouteState>((set) => ({
@@ -16,5 +17,6 @@ export const useRouteStore = create<RouteState>((set) => ({
         current: entry,
         history: [entry, ...state.history].slice(0, 20)
       };
-    })
+    }),
+  clearCurrent: () => set({ current: undefined })
 }));

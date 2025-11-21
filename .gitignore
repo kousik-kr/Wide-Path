@@ -12,3 +12,6 @@ frontend/.vite/
 .env
 frontend/.env
 frontend/.env.local
+
+# Large dataset files
+edges_264346.txt

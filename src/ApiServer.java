@@ -19,10 +19,12 @@ import java.text.Bidi;
 import java.util.ArrayList;
 import java.util.DoubleSummaryStatistics;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
 import java.util.regex.Matcher;
@@ -54,6 +56,7 @@ public class ApiServer {
         }
         server.createContext("/api/nodes", ApiServer::handleNodes);
         server.createContext("/api/network/meta", ApiServer::handleNetworkMeta);
+        server.createContext("/api/network/graph", ApiServer::handleGraphPreview);
         server.createContext("/api/queries/run", ApiServer::handleRunQuery);
         server.createContext("/api/metrics/live", ApiServer::handleMetrics);
         server.setExecutor(ForkJoinPool.commonPool());
@@ -395,6 +398,79 @@ public class ApiServer {
     }
 
     /**
+     * Returns a lightweight snapshot of the currently loaded graph so the
+     * frontend can render a preview without waiting for user input. The
+     * response includes every node and a capped set of edges to keep payloads
+     * small for large networks.
+     */
+    private static void handleGraphPreview(HttpExchange exchange) throws IOException {
+        if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            return;
+        }
+
+        Map<String, String> params = parseQueryParams(Optional.ofNullable(exchange.getRequestURI().getQuery()).orElse(""));
+        int maxEdges = 800;
+        if (params.containsKey("maxEdges")) {
+            try {
+                maxEdges = Math.max(1, Integer.parseInt(params.get("maxEdges")));
+            } catch (NumberFormatException ignored) { }
+        }
+
+        StringBuilder json = new StringBuilder();
+        json.append('{');
+
+        json.append("\"nodes\":[");
+        boolean first = true;
+        for (Map.Entry<Integer, Node> entry : Graph.get_nodes().entrySet()) {
+            Node node = entry.getValue();
+            if (!first) json.append(',');
+            first = false;
+            json.append('{')
+                    .append("\"id\":").append(entry.getKey()).append(',')
+                    .append("\"coord\":[")
+                    .append(String.format(Locale.ROOT, "%.6f,%.6f", node.get_longitude(), node.get_latitude()))
+                    .append("]}");
+        }
+        json.append(']');
+
+        json.append(",\"edges\":[");
+        Set<String> seenEdges = new HashSet<>();
+        int edgeCount = 0;
+        boolean firstEdge = true;
+        for (Map.Entry<Integer, Node> entry : Graph.get_nodes().entrySet()) {
+            if (edgeCount >= maxEdges) break;
+            int from = entry.getKey();
+            Node source = entry.getValue();
+            for (Edge edge : source.get_outgoing_edges().values()) {
+                if (edgeCount >= maxEdges) break;
+                int to = edge.get_destination();
+                Node dest = Graph.get_node(to);
+                if (dest == null) continue;
+
+                String key = from + "->" + to;
+                if (!seenEdges.add(key)) continue;
+
+                if (!firstEdge) json.append(',');
+                firstEdge = false;
+                edgeCount++;
+                json.append('{')
+                        .append("\"from\":").append(from).append(',')
+                        .append("\"to\":").append(to).append(',')
+                        .append("\"line\":[")
+                        .append(String.format(Locale.ROOT, "[%.6f,%.6f],[%.6f,%.6f]",
+                                source.get_longitude(), source.get_latitude(),
+                                dest.get_longitude(), dest.get_latitude()))
+                        .append("]}");
+            }
+        }
+        json.append(']');
+
+        json.append('}');
+        writeJson(exchange, json.toString());
+    }
+
+    /**
      * Runs the bidirectional query end-to-end and returns a GeoJSON feature plus
      * diagnostics. The handler is intentionally defensive: we default missing
      * fields, guard against solver errors, and always respond with a valid
@@ -412,8 +488,14 @@ public class ApiServer {
         int destination = payload.getOrDefault("destination", 0.0).intValue();
         double departure = payload.getOrDefault("startDepartureMinutes", 0.0);
         double budget = payload.getOrDefault("budgetMinutes", 60.0);
+        double intervalDuration = payload.getOrDefault(
+                "intervalDurationMinutes",
+                BidirectionalAstar.interval_duration > 0 ? BidirectionalAstar.interval_duration : 360.0
+        );
 
-        Query query = new Query(source, destination, departure, departure + BidirectionalAstar.interval_duration, budget);
+        BidirectionalAstar.interval_duration = intervalDuration;
+
+        Query query = new Query(source, destination, departure, departure + intervalDuration, budget);
         Result result = null;
         long start = System.currentTimeMillis();
         try {

@@ -361,6 +361,7 @@ public class BidirectionalAstar {
         SHARP_THRESHOLD = 60;
         WIDENESS_THRESHOLD = 12.8;
         TIME_LIMIT = 5;
+        interval_duration = interval_duration > 0 ? interval_duration : 360;
         pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
     }
 
@@ -466,13 +467,7 @@ public class BidirectionalAstar {
      */
     public static Result runSingleQuery(int source, int destination, double departureMinutes, double budgetMinutes)
             throws InterruptedException, ExecutionException {
-        Query query = new Query(source, destination, departureMinutes, departureMinutes + budgetMinutes, budgetMinutes);
-        BidirectionalDriver driver = new BidirectionalDriver(query, budgetMinutes);
-        try {
-            return driver.driver();
-        } finally {
-            Graph.reset();
-        }
+        return runSingleQuery(source, destination, departureMinutes, budgetMinutes, budgetMinutes);
     }
 
     /**
@@ -485,6 +480,30 @@ public class BidirectionalAstar {
 
     public static Result queryProcessing(Query query) throws InterruptedException, ExecutionException {
         return runSingleQuery(query.get_source(), query.get_destination(), query.get_start_departure_time(), query.get_budget());
+    }
+
+    /**
+     * Run a single query with an explicit interval duration for the end time window.
+     */
+    public static Result runSingleQuery(int source, int destination, double departureMinutes, double intervalMinutes, double budgetMinutes)
+            throws InterruptedException, ExecutionException {
+        double interval = intervalMinutes > 0 ? intervalMinutes : budgetMinutes;
+        interval_duration = interval;
+        Query query = new Query(source, destination, departureMinutes, departureMinutes + interval, budgetMinutes);
+        BidirectionalDriver driver = new BidirectionalDriver(query, budgetMinutes);
+        try {
+            return driver.driver();
+        } finally {
+            Graph.reset();
+        }
+    }
+
+    public static void setIntervalDuration(double intervalMinutes) {
+        interval_duration = intervalMinutes;
+    }
+
+    public static double getIntervalDuration() {
+        return interval_duration;
     }
 
 	public static void updateMemory() {

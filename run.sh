@@ -7,6 +7,7 @@ FRONTEND_PORT=${FRONTEND_PORT:-5173}
 API_BASE="${API_BASE:-}"
 MODE="full"
 NVM_VERSION="${NVM_VERSION:-24}"
+BACKEND_LOG="${BACKEND_LOG:-"$ROOT_DIR/.backend.log"}"
 
 default_api_base() {
   echo "${API_BASE:-http://localhost:${BACKEND_PORT}/api}"
@@ -77,6 +78,36 @@ start_backend() {
   (cd "$ROOT_DIR/build" && exec java ApiServer "${BACKEND_PORT}")
 }
 
+start_backend_background() {
+  build_backend
+  require_cmd java
+  echo "Starting API server (requested port ${BACKEND_PORT})..."
+  : >"$BACKEND_LOG"
+  (cd "$ROOT_DIR/build" && java ApiServer "${BACKEND_PORT}") >"$BACKEND_LOG" 2>&1 &
+  BACKEND_PID=$!
+  trap 'kill ${BACKEND_PID} 2>/dev/null || true' EXIT
+  actual_port=$(wait_for_backend_port)
+  if [ -n "$actual_port" ]; then
+    echo "Backend reported port ${actual_port}"
+    API_BASE="${API_BASE:-http://localhost:${actual_port}/api}"
+  else
+    echo "Warning: could not detect backend port from log; defaulting API_BASE=${API_BASE}"
+  fi
+}
+
+wait_for_backend_port() {
+  for _ in $(seq 1 30); do
+    if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+      return
+    fi
+    if grep -m1 -o 'API server started on port [0-9]*' "$BACKEND_LOG" >/dev/null; then
+      grep -m1 -o 'API server started on port [0-9]*' "$BACKEND_LOG" | awk '{print $6}'
+      return
+    fi
+    sleep 1
+  done
+}
+
 start_frontend() {
   ensure_node
   require_cmd npm
@@ -133,11 +164,7 @@ case "$MODE" in
     start_frontend
     ;;
   full)
-    start_backend &
-    BACKEND_PID=$!
-    trap 'kill ${BACKEND_PID} 2>/dev/null || true' EXIT
-    # Give backend a moment to boot so the frontend proxy works immediately.
-    sleep 1
+    start_backend_background
     start_frontend
     ;;
   *)

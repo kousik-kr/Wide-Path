@@ -493,18 +493,12 @@ public class ApiServer {
                 BidirectionalAstar.interval_duration > 0 ? BidirectionalAstar.interval_duration : 360.0
         );
 
-        BidirectionalAstar.interval_duration = intervalDuration;
-
-        Query query = new Query(source, destination, departure, departure + intervalDuration, budget);
         Result result = null;
         long start = System.currentTimeMillis();
         try {
-            BidirectionalDriver driver = new BidirectionalDriver(query, budget);
-            result = driver.driver();
+            result = BidirectionalAstar.runSingleQuery(source, destination, departure, intervalDuration, budget);
         } catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
-        } finally {
-            Graph.reset();
         }
         long elapsed = System.currentTimeMillis() - start;
         Runtime runtime = Runtime.getRuntime();

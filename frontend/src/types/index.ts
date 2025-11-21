@@ -3,6 +3,7 @@ export interface QueryPayload {
   destination: number;
   startDepartureMinutes: number;
   budgetMinutes: number;
+  intervalDurationMinutes: number;
 }
 
 export interface RouteResult {

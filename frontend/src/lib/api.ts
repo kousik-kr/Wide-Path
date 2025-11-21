@@ -15,11 +15,12 @@ export function fetchNodes(search: string) {
   return request<NodeSummary[]>(`${API_BASE}/nodes?${params.toString()}`);
 }
 
-export function runQuery(body: QueryPayload) {
+export function runQuery(body: QueryPayload, signal?: AbortSignal) {
   return request<QueryResponse>(`${API_BASE}/queries/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal
   });
 }
 

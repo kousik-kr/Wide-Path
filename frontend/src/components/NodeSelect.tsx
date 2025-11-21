@@ -13,7 +13,6 @@ interface NodeSelectProps {
 
 export default function NodeSelect({ label, value, onSelect }: NodeSelectProps) {
   const [search, setSearch] = useState('');
-  const [manualValue, setManualValue] = useState(value.toString());
   // Keep a debounced copy so we don't hammer the API on every keystroke.
   const [debounced, setDebounced] = useState('');
 
@@ -28,10 +27,6 @@ export default function NodeSelect({ label, value, onSelect }: NodeSelectProps) 
     queryFn: () => fetchNodes(debounced),
     enabled: debounced.length > 1
   });
-
-  useEffect(() => {
-    setManualValue(String(value));
-  }, [value]);
 
   const items = query.data ?? [];
   const showDropdown = debounced.length > 1 && items.length > 0;
@@ -79,21 +74,6 @@ export default function NodeSelect({ label, value, onSelect }: NodeSelectProps) 
             ))}
           </ul>
         ) : null}
-        <div>
-          <label className="block text-xs text-slate-400">Manual entry</label>
-          <input
-            type="number"
-            value={manualValue}
-            onChange={(event) => {
-              setManualValue(event.target.value);
-              const parsed = Number(event.target.value);
-              if (!Number.isNaN(parsed)) {
-                onSelect({ id: parsed, latitude: 0, longitude: 0, degree: 0 });
-              }
-            }}
-            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-white"
-          />
-        </div>
       </div>
     </div>
   );

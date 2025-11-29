@@ -29,6 +29,7 @@ public class GuiLauncher {
     private final QueryHistoryManager historyManager;
     private final MetricsCollector metricsCollector;
     private final ThemeManager themeManager;
+    private final QueryLogger queryLogger;
     
     // UI Panels
     private QueryInputPanel inputPanel;
@@ -80,6 +81,7 @@ public class GuiLauncher {
         this.historyManager = new QueryHistoryManager();
         this.metricsCollector = new MetricsCollector();
         this.themeManager = new ThemeManager();
+        this.queryLogger = new QueryLogger();
         
         // Configure frame
         frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
@@ -337,6 +339,9 @@ public class GuiLauncher {
             protected void done() {
                 try {
                     QueryResult result = get();
+                    
+                    // Log the query to file
+                    queryLogger.logQuery(result);
                     
                     // Update history and metrics
                     historyManager.addQuery(result);

@@ -36,7 +36,7 @@ public class BidirectionalAstar {
 	/**
 	 * @param args
 	 */
-	private static final String currentDirectory = "C:\\Users\\kousi\\Wide-Path\\";	//current directory of the code
+	private static final String currentDirectory = "C:\\Users\\kousi\\eclipse-workspace\\Wide-Path\\";	//current directory of the code
 	private static final int defaultVertexCount = 264346;
     private static String dataDirectory = currentDirectory;
     private static String configuredGraphDataDir = currentDirectory;

@@ -45,7 +45,7 @@ public class AdvancedMapPanel extends JPanel {
     private int totalPages = 1;
     
     // Animation
-    private Timer animationTimer;
+    private javax.swing.Timer animationTimer;
     private int animationFrame = 0;
     private double animationProgress = 0.0;
     
@@ -67,7 +67,7 @@ public class AdvancedMapPanel extends JPanel {
         createMapCanvas();
         
         // Animation timer for pulse mode
-        animationTimer = new Timer(100, e -> {
+        animationTimer = new javax.swing.Timer(100, e -> {
             if (currentMode == VisualizationMode.PULSE_ANIMATION && !pathNodes.isEmpty()) {
                 animationFrame++;
                 animationProgress = (animationProgress + 0.05) % 1.0;

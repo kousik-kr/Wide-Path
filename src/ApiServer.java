@@ -1,6 +1,7 @@
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import managers.QueryLogger;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -40,6 +41,7 @@ import java.util.stream.Stream;
  */
 public class ApiServer {
     private static final int DEFAULT_PORT = 8080;
+    private static final QueryLogger queryLogger = new QueryLogger();
 
     public static void main(String[] args) throws Exception {
         int port = resolvePort(args);
@@ -495,12 +497,18 @@ public class ApiServer {
 
         Result result = null;
         long start = System.currentTimeMillis();
+        String errorMessage = null;
         try {
             result = BidirectionalAstar.runSingleQuery(source, destination, departure, intervalDuration, budget);
         } catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
+            errorMessage = e.getMessage();
         }
         long elapsed = System.currentTimeMillis() - start;
+        
+        // Log the query to file
+        queryLogger.logQueryRaw(source, destination, departure, intervalDuration, budget, 
+                                result, elapsed, errorMessage);
         Runtime runtime = Runtime.getRuntime();
         double memoryMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024.0 * 1024.0);
 

@@ -294,7 +294,7 @@ public class BidirectionalAstar {
 	}
 
 	private static void query_processing() throws IOException, InterruptedException, ExecutionException{
-		String output_file = "Output_BiTDCPO_" + Graph.get_vertex_count() + ".txt";
+		String output_file = currentDirectory + "Output_BiTDCPO_" + Graph.get_vertex_count() + ".txt";
 		FileWriter fout = new FileWriter(output_file);
 		BufferedWriter writer = new BufferedWriter(fout);
 		

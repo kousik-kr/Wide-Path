@@ -1,12 +1,16 @@
 package managers;
 
-import models.QueryResult;
-import java.io.*;
-import java.nio.file.*;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
+
+import models.QueryResult;
 
 /**
  * Thread-safe query logger that persists query inputs and outputs to log files.

@@ -1,14 +1,53 @@
-import managers.*;
-import models.QueryResult;
-import ui.components.*;
-import ui.panels.*;
-
-import javax.swing.*;
-import java.awt.*;
-import java.awt.event.*;
-import java.util.*;
+import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.GraphicsEnvironment;
+import java.awt.event.ActionEvent;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import javax.swing.AbstractAction;
+import javax.swing.Action;
+import javax.swing.BorderFactory;
+import javax.swing.JCheckBoxMenuItem;
+import javax.swing.JComponent;
+import javax.swing.JDialog;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JProgressBar;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
+import javax.swing.JTabbedPane;
+import javax.swing.JTextPane;
+import javax.swing.KeyStroke;
+import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
+import javax.swing.UIManager;
+import javax.swing.WindowConstants;
+
+import managers.MetricsCollector;
+import managers.QueryHistoryManager;
+import managers.QueryLogger;
+import managers.ThemeManager;
+import managers.GoogleDriveDatasetLoader;
+import models.QueryResult;
+import ui.components.StatusBar;
+import ui.panels.AdvancedMapPanel;
+import ui.panels.MetricsDashboard;
+import ui.panels.QueryHistoryPanel;
+import ui.panels.QueryInputPanel;
 
 /**
  * World-Class Wide-Path GUI Application - Main Entry Point
@@ -96,7 +135,116 @@ public class GuiLauncher {
     }
 
     private void start() {
+        // Try to load dataset from Google Drive if not available locally
+        try {
+            GoogleDriveDatasetLoader driveLoader = new GoogleDriveDatasetLoader();
+            
+            // Check if dataset is already cached
+            if (!driveLoader.isDatasetCached(null)) {
+                int choice = JOptionPane.showConfirmDialog(null,
+                    "Dataset not found locally.\n" +
+                    "Would you like to download it from Google Drive?\n\n" +
+                    "Note: This may take several minutes depending on dataset size.",
+                    "Download Dataset",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.QUESTION_MESSAGE);
+                
+                if (choice == JOptionPane.YES_OPTION) {
+                    // Show progress dialog
+                    JDialog progressDialog = new JDialog(frame, "Downloading Dataset", true);
+                    JProgressBar progressBar = new JProgressBar();
+                    progressBar.setIndeterminate(true);
+                    progressBar.setString("Downloading dataset files from Google Drive...");
+                    progressBar.setStringPainted(true);
+                    JPanel panel = new JPanel(new BorderLayout(10, 10));
+                    panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+                    panel.add(new JLabel("Please wait while the dataset is being downloaded."), BorderLayout.NORTH);
+                    panel.add(progressBar, BorderLayout.CENTER);
+                    progressDialog.add(panel);
+                    progressDialog.setSize(450, 150);
+                    progressDialog.setLocationRelativeTo(null);
+                    
+                    // Download in background thread
+                    SwingWorker<String, Void> downloadWorker = new SwingWorker<String, Void>() {
+                        @Override
+                        protected String doInBackground() throws Exception {
+                            return driveLoader.ensureDatasetAvailable();
+                        }
+                        
+                        @Override
+                        protected void done() {
+                            progressDialog.dispose();
+                            try {
+                                String datasetPath = get();
+                                BidirectionalAstar.setConfiguredGraphDataDir(datasetPath);
+                                loadGraphAndInitUI();
+                            } catch (Exception e) {
+                                // Check if this is a configuration error
+                                String errorMsg = e.getMessage();
+                                if (errorMsg != null && errorMsg.contains("File ID not configured")) {
+                                    int fallbackChoice = JOptionPane.showConfirmDialog(null,
+                                        "Google Drive file IDs are not configured yet.\n\n" +
+                                        "Would you like to:\n" +
+                                        "• YES - Use demo graph (small test dataset)\n" +
+                                        "• NO - Exit and configure file IDs later\n\n" +
+                                        "To configure: See GOOGLE_DRIVE_QUICKSTART.md",
+                                        "Configuration Required",
+                                        JOptionPane.YES_NO_OPTION,
+                                        JOptionPane.INFORMATION_MESSAGE);
+                                    
+                                    if (fallbackChoice == JOptionPane.YES_OPTION) {
+                                        // Use demo graph
+                                        loadGraphAndInitUI();
+                                    } else {
+                                        System.exit(0);
+                                    }
+                                } else {
+                                    JOptionPane.showMessageDialog(null,
+                                        "Failed to download dataset: " + errorMsg + "\n\n" +
+                                        "Please check:\n" +
+                                        "1. Internet connection is available\n" +
+                                        "2. Google Drive files are publicly accessible\n\n" +
+                                        "Loading demo graph instead...",
+                                        "Download Error",
+                                        JOptionPane.WARNING_MESSAGE);
+                                    loadGraphAndInitUI();
+                                }
+                            }
+                        }
+                    };
+                    
+                    downloadWorker.execute();
+                    progressDialog.setVisible(true);
+                    return; // Exit start() - loadGraphAndInitUI() will be called after download
+                } else {
+                    // User declined download, offer demo graph
+                    int demoChoice = JOptionPane.showConfirmDialog(null,
+                        "Would you like to use the demo graph instead?\n\n" +
+                        "The demo graph is a small test dataset for trying out the application.",
+                        "Use Demo Graph",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.QUESTION_MESSAGE);
+                    
+                    if (demoChoice != JOptionPane.YES_OPTION) {
+                        System.exit(0);
+                    }
+                    // Fall through to load demo graph
+                }
+            } else {
+                // Dataset is cached, use it
+                String datasetPath = driveLoader.ensureDatasetAvailable();
+                BidirectionalAstar.setConfiguredGraphDataDir(datasetPath);
+            }
+        } catch (Exception e) {
+            System.err.println("[GUI] Google Drive loader error: " + e.getMessage());
+            // Fall back to default behavior
+        }
+        
         // Load graph
+        loadGraphAndInitUI();
+    }
+    
+    private void loadGraphAndInitUI() {
         BidirectionalAstar.configureDefaults();
         boolean loaded = BidirectionalAstar.loadGraphFromDisk(null, null);
         if (!loaded) {

@@ -1,8 +1,3 @@
-import com.sun.net.httpserver.Headers;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
-import managers.QueryLogger;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,7 +10,6 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.text.Bidi;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.DoubleSummaryStatistics;
@@ -32,6 +26,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import com.sun.net.httpserver.Headers;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+
+import managers.GoogleDriveDatasetLoader;
+import managers.QueryLogger;
 
 /**
  * Lightweight HTTP facade that exposes node search, metadata, query execution,
@@ -120,6 +121,27 @@ public class ApiServer {
 
         if (!Graph.get_nodes().isEmpty()) {
             return;
+        }
+
+        // Try to load dataset from Google Drive if not available locally
+        try {
+            GoogleDriveDatasetLoader driveLoader = new GoogleDriveDatasetLoader();
+            driveLoader.setVerbose(true);
+            
+            if (!driveLoader.isDatasetCached(null)) {
+                System.out.println("[ApiServer] Dataset not found locally. Downloading from Google Drive...");
+                String datasetPath = driveLoader.ensureDatasetAvailable();
+                BidirectionalAstar.setConfiguredGraphDataDir(datasetPath);
+                System.out.println("[ApiServer] Dataset downloaded to: " + datasetPath);
+            } else {
+                String datasetPath = driveLoader.getCacheDirectory().toString();
+                BidirectionalAstar.setConfiguredGraphDataDir(datasetPath);
+                System.out.println("[ApiServer] Using cached dataset from: " + datasetPath);
+            }
+        } catch (Exception e) {
+            System.err.println("[ApiServer] Google Drive loader error: " + e.getMessage());
+            System.err.println("[ApiServer] Falling back to local directory...");
+            // Fall back to default behavior
         }
 
         boolean loaded = loadGraphFromFiles();

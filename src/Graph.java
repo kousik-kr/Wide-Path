@@ -230,6 +230,11 @@ public final class Graph {
             int current_right_turn = gRightTurn.get(current_vertex);
 
             Map<Integer, Edge> temp_outgoing_edge = node.get_outgoing_edges();
+            
+            // Debug: check if source node has edges
+            if (current_vertex == source) {
+                System.out.println("[ForwardA*] Source node " + source + " has " + temp_outgoing_edge.size() + " outgoing edges");
+            }
 
             for (Entry<Integer, Edge> entry : temp_outgoing_edge.entrySet()) {
 
@@ -331,6 +336,11 @@ public final class Graph {
             int current_right_turn = gRightTurn.get(current_vertex);
 
             Map<Integer, Edge> temp_incoming_edge = node.get_incoming_edges();
+            
+            // Debug: check if destination node has edges
+            if (current_vertex == destination) {
+                System.out.println("[BackwardA*] Destination node " + destination + " has " + temp_incoming_edge.size() + " incoming edges");
+            }
 
             for (Entry<Integer, Edge> entry : temp_incoming_edge.entrySet()) {
 

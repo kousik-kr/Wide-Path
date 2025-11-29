@@ -14,6 +14,8 @@ Wide-Path is an advanced pathfinding analysis system featuring:
 ✨ **Query History**: Stores and analyzes last 100 queries  
 ✨ **Material Design UI**: Modern, professional interface with themes  
 ✨ **Graph Pagination**: Handle large graphs with configurable pagination  
+✨ **Query Logging**: Automatic logging of all queries to daily log files  
+✨ **Google Drive Integration**: Auto-download datasets from Google Drive (NEW!)
 
 📚 **[Read Full Transformation Summary →](TRANSFORMATION_SUMMARY.md)**
 
@@ -22,6 +24,7 @@ Wide-Path is an advanced pathfinding analysis system featuring:
 - **Maven** (for building the Java project).
 - **Node.js 18+ and npm** (optional, for the Vite frontend).
 - **curl** (optional, for API testing).
+- **Internet connection** (for first-time dataset download from Google Drive).
 
 Example install on Ubuntu/Debian:
 ```bash
@@ -91,6 +94,17 @@ Options:
 
 ## 📚 Documentation
 
+- **[GOOGLE_DRIVE_SETUP.md](GOOGLE_DRIVE_SETUP.md)** - Google Drive integration setup (NEW!)
+  - Automatic dataset downloading
+  - Configuration guide
+  - Troubleshooting
+  - Cache management
+
+- **[GOOGLE_DRIVE_IMPLEMENTATION.md](GOOGLE_DRIVE_IMPLEMENTATION.md)** - Implementation details
+  - Technical architecture
+  - API reference
+  - Code examples
+
 - **[MODULAR_ARCHITECTURE.md](MODULAR_ARCHITECTURE.md)** - Complete architecture guide
   - Package structure and component details
   - Design patterns and best practices
@@ -108,6 +122,11 @@ Options:
   - New features overview
   - Migration guide
   - Achievement summary
+
+- **[QUERY_LOGGING.md](QUERY_LOGGING.md)** - Query logging documentation
+  - Daily log files
+  - Log format
+  - Usage examples
 
 ## 🎨 Visualization Modes
 

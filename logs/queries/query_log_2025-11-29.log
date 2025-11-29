@@ -1,0 +1,63 @@
+
+================================================================================
+QUERY LOG ENTRY - 2025-11-29 12:27:08.905
+================================================================================
+
+[INPUT PARAMETERS]
+  Source Node:           72594
+  Destination Node:      72541
+  Departure Time:        450.00 min (7.50 hrs)
+  Interval Duration:     360.00 min
+  Budget:                15.00 min
+
+[QUERY STATUS]
+  Success:               NO
+  Execution Time:        71 ms
+
+[ERROR DETAILS]
+  Error Message:         Cannot invoke "java.lang.Double.doubleValue()" because the return value of "java.util.Map.get(Object)" is null
+
+================================================================================
+
+
+================================================================================
+QUERY LOG ENTRY - 2025-11-29 12:33:06.157
+================================================================================
+
+[INPUT PARAMETERS]
+  Source Node:           72594
+  Destination Node:      72541
+  Departure Time:        450.00 min (7.50 hrs)
+  Interval Duration:     360.00 min
+  Budget:                15.00 min
+
+[QUERY STATUS]
+  Success:               NO
+  Execution Time:        71 ms
+
+[ERROR DETAILS]
+  Error Message:         Cannot invoke "java.lang.Double.doubleValue()" because the return value of "java.util.Map.get(Object)" is null
+
+================================================================================
+
+
+================================================================================
+QUERY LOG ENTRY - 2025-11-29 12:39:29.540
+================================================================================
+
+[INPUT PARAMETERS]
+  Source Node:           0
+  Destination Node:      12
+  Departure Time:        450.00 min (7.50 hrs)
+  Interval Duration:     360.00 min
+  Budget:                5.00 min
+
+[QUERY STATUS]
+  Success:               NO
+  Execution Time:        34 ms
+
+[ERROR DETAILS]
+  Error Message:         Cannot invoke "java.lang.Double.doubleValue()" because the return value of "java.util.Map.get(Object)" is null
+
+================================================================================
+
